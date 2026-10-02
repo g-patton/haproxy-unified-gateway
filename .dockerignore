@@ -1,0 +1,6 @@
+# Local agent/scratch artifacts, never needed by an image build
+.local/
+
+# Repo CI configuration consumed by the forge, not the build
+.github/
+.gitlab/
