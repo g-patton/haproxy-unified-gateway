@@ -56,25 +56,29 @@ RUN gcc -O3 -std=c11 -pipe \
     -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -Wl,--as-needed \
     -o haproxy_wrapper haproxy_wrapper.c
 
-FROM haproxytech/haproxy-alpine:3.2
+# Prune files the gateway never uses; the scratch copy below removes them for real.
+FROM haproxytech/haproxy-alpine:3.2 AS haproxy-base
+RUN rm -f /usr/local/bin/dataplaneapi \
+           /usr/local/etc/haproxy/dataplaneapi.yml \
+           /usr/local/etc/haproxy/haproxy.cfg \
+           /docker-entrypoint.sh && \
+    rm -rf /usr/local/var/lib/dataplaneapi /var/lib/dataplaneapi
 
-# base image setup only: stays cached across source changes
+# stable pieces only: the scratch copy flattens them into one shared layer
 RUN apk --no-cache add socat openssl util-linux htop tzdata curl libcap && \
-    rm -f /usr/local/bin/dataplaneapi /usr/bin/dataplaneapi /etc/haproxy/dataplaneapi.yml && \
-    rm -rf /usr/local/var/lib/dataplaneapi /var/lib/dataplaneapi && \
-    rm -f /docker-entrypoint.sh && \
-    rm -f /etc/haproxy/haproxy.cfg && \
     mkdir -p /var/run/haproxy && \
     chown -R "haproxy:haproxy" /usr/local/etc/haproxy /run /var && \
     chmod -R ug+rwx /usr/local/etc/haproxy /run /var
+COPY --from=builder-c /src/libblock_secrets.so /usr/local/lib/libblock_secrets.so
+COPY --from=builder-c /src/haproxy_wrapper /usr/local/sbin/haproxy_wrapper
 
-# all build artifacts installed and fixed up in a single layer
-RUN --mount=from=builder-go,source=/src/fs,target=/mnt/builder-go \
-    --mount=from=builder-c,source=/src,target=/mnt/builder-c \
-    cp -a /mnt/builder-go/. / && \
-    rm /usr/local/hug/defaults.go && \
-    cp -a /mnt/builder-c/libblock_secrets.so /usr/local/lib/libblock_secrets.so && \
-    cp -a /mnt/builder-c/haproxy_wrapper /usr/local/sbin/haproxy_wrapper && \
+FROM scratch
+COPY --from=haproxy-base / /
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# frequently-rebuilt artifacts keep their own layers so pushes stay incremental
+COPY --from=builder-go /src/fs/. /
+RUN rm /usr/local/hug/defaults.go && \
     mkdir -p /usr/local/hug/aux && \
     chgrp -R haproxy /usr/local/hug && \
     chmod -R ug+rwx /usr/local/hug && \
