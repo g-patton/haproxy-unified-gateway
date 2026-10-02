@@ -21,16 +21,13 @@ COPY /go.sum /src/go.sum
 RUN cd /src && go mod download
 
 WORKDIR /src
-RUN go install -trimpath -ldflags="-s" github.com/haproxytech/gopherd@v1.3.2
 COPY / /src
-
-RUN mkdir -p /var/run/vars
-
 # stage gopherd into the fs overlay tree
-RUN mkdir -p fs/usr/local/sbin && \
-    cp -a /go/bin/gopherd fs/usr/local/sbin/gopherd
+COPY --from=haproxytech/gopherd:1.3.2 /usr/local/sbin/gopherd /src/fs/usr/local/sbin/gopherd
 
 RUN CGO_ENABLED=0 go build -buildvcs=true \
+        -trimpath \
+        -ldflags="-s" \
         -tags="$BUILD_TAGS" \
         -o fs/usr/local/sbin/hug ./cmd/controller
 
@@ -61,12 +58,11 @@ RUN gcc -O3 -std=c11 -pipe \
 
 FROM haproxytech/haproxy-alpine:3.2
 
-ARG TARGETPLATFORM
-
 # base image setup only: stays cached across source changes
 RUN apk --no-cache add socat openssl util-linux htop tzdata curl libcap && \
     rm -f /usr/local/bin/dataplaneapi /usr/bin/dataplaneapi /etc/haproxy/dataplaneapi.yml && \
-    rm -f /usr/local/bin/dataplaneapi-v2 /usr/bin/dataplaneapi-v2 && \
+    rm -rf /usr/local/var/lib/dataplaneapi /var/lib/dataplaneapi && \
+    rm -f /docker-entrypoint.sh && \
     rm -f /etc/haproxy/haproxy.cfg && \
     mkdir -p /var/run/haproxy && \
     chown -R "haproxy:haproxy" /usr/local/etc/haproxy /run /var && \
