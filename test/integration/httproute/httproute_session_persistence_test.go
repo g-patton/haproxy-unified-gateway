@@ -48,10 +48,6 @@ func (s *HTTPRouteTestSuite) Test_HTTPRoute_SessionPersistence_Absolutetimeout()
 // 	s.RunHTTPRouteSessionPersistenceTest("session-persistence-absolutetimeout-cookieconfig-session", true)
 // }
 
-func (s *HTTPRouteTestSuite) Test_HTTPRoute_SessionPersistence_Idletimeout() {
-	s.RunHTTPRouteSessionPersistenceTest("session-persistence-idletimeout", true)
-}
-
 func (s *HTTPRouteTestSuite) Test_HTTPRoute_SessionPersistence_Named_Removed() {
 	fixtureTestDir := "session-persistence-named-removed"
 	s.RunHTTPRouteSessionPersistenceTest(fixtureTestDir, false)

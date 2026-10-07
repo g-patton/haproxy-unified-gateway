@@ -1,4 +1,4 @@
-conformance-GW-API-1_5_0:
+conformance-GW-API-1_6_3:
   allow_failure: true
   stage: conformance-tests
   retry: 0
@@ -16,11 +16,11 @@ conformance-GW-API-1_5_0:
   variables:
     # Runner kernels lack ip6table_raw; docker 29 needs it for IPv6 endpoints.
     DOCKER_INSECURE_NO_IPTABLES_RAW: "1"
-    GWAPI_VERSION: "1.5.0"
-    CLUSTER_NAME: "conformance-1-5-0"
-    CONFORMANCE_REPORT_OUTPUT: "${CI_PROJECT_DIR}/conformance-report-1.5.0.yaml"
-    CONFORMANCE_JUNIT_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.5.0.xml"
-    CONFORMANCE_JUNIT_HTML_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.5.0.html"
+    GWAPI_VERSION: "1.6.3"
+    CLUSTER_NAME: "conformance-1-6-3"
+    CONFORMANCE_REPORT_OUTPUT: "${CI_PROJECT_DIR}/conformance-report-1.6.3.yaml"
+    CONFORMANCE_JUNIT_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.6.3.xml"
+    CONFORMANCE_JUNIT_HTML_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.6.3.html"
     HUG_SERVICE_TYPE: "ClusterIP"
   before_script:
     - export PATH=$PATH:/root/go/bin
@@ -41,13 +41,13 @@ conformance-GW-API-1_5_0:
   artifacts:
     when: always
     paths:
-      - conformance-report-1.5.0.yaml
-      - conformance-junit-1.5.0.xml
-      - conformance-junit-1.5.0.html
+      - conformance-report-1.6.3.yaml
+      - conformance-junit-1.6.3.xml
+      - conformance-junit-1.6.3.html
     reports:
-      junit: conformance-junit-1.5.0.xml
+      junit: conformance-junit-1.6.3.xml
 
-conformance-MR-GW-API-1_5_0:
+conformance-MR-GW-API-1_6_3:
   allow_failure: false
   stage: conformance
   retry: 0
@@ -64,11 +64,11 @@ conformance-MR-GW-API-1_5_0:
   variables:
     # Runner kernels lack ip6table_raw; docker 29 needs it for IPv6 endpoints.
     DOCKER_INSECURE_NO_IPTABLES_RAW: "1"
-    GWAPI_VERSION: "1.5.0"
-    CLUSTER_NAME: "conformance-mr-1-5-0"
-    CONFORMANCE_REPORT_OUTPUT: "${CI_PROJECT_DIR}/conformance-report-1.5.0.yaml"
-    CONFORMANCE_JUNIT_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.5.0.xml"
-    CONFORMANCE_JUNIT_HTML_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.5.0.html"
+    GWAPI_VERSION: "1.6.3"
+    CLUSTER_NAME: "conformance-mr-1-6-3"
+    CONFORMANCE_REPORT_OUTPUT: "${CI_PROJECT_DIR}/conformance-report-1.6.3.yaml"
+    CONFORMANCE_JUNIT_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.6.3.xml"
+    CONFORMANCE_JUNIT_HTML_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.6.3.html"
     CONFORMANCE_RUN_TEST: ""
     HUG_SERVICE_TYPE: "ClusterIP"
     # Pod label selector for conformance-collect-debug-mr.
@@ -118,9 +118,9 @@ conformance-MR-GW-API-1_5_0:
   artifacts:
     when: always
     paths:
-      - conformance-report-1.5.0.yaml
-      - conformance-junit-1.5.0.xml
-      - conformance-junit-1.5.0.html
+      - conformance-report-1.6.3.yaml
+      - conformance-junit-1.6.3.xml
+      - conformance-junit-1.6.3.html
       - debug-hug/
     reports:
-      junit: conformance-junit-1.5.0.xml
+      junit: conformance-junit-1.6.3.xml

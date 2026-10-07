@@ -28,23 +28,15 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
-//go:embed v1.3.0-experimental.yaml.gz
-var v130 []byte
-
-//go:embed v1.4.0-experimental.yaml.gz
-var v140 []byte
-
-//go:embed v1.5.0-experimental.yaml.gz
-var v150 []byte
+//go:embed v1.6.3-experimental.yaml.gz
+var v163 []byte
 
 // SupportedVersions lists all embedded Gateway API versions.
-var SupportedVersions = []string{"v1.3.0", "v1.4.0", "v1.5.0"}
+var SupportedVersions = []string{"v1.6.3"}
 
 // versions maps semver version strings to their embedded gzipped CRD YAML.
 var versions = map[string][]byte{
-	"v1.3.0": v130,
-	"v1.4.0": v140,
-	"v1.5.0": v150,
+	"v1.6.3": v163,
 }
 
 // BundleVersionAnnotation is the annotation key used by Gateway API CRDs

@@ -116,10 +116,10 @@ func NewIntTest(t *testing.T, crdRelativePath string, levelsUp int) (test IntTes
 	installPath := os.Getenv("KUBEBUILDER_ASSETS")
 
 	// Gateway API CRDs: use embedded version, controlled by GWAPI_VERSION env var.
-	// Defaults to v1.3.0.
+	// Defaults to v1.6.3.
 	gwapiVersion := os.Getenv("GWAPI_VERSION")
 	if gwapiVersion == "" {
-		gwapiVersion = "1.5.0"
+		gwapiVersion = "1.6.3"
 	}
 	gatewayCRDsPath, errTmp := os.MkdirTemp("", "gwapi-crds-*")
 	g.Expect(errTmp).ToNot(gomega.HaveOccurred())

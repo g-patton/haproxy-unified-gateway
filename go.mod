@@ -11,7 +11,7 @@ require (
 	github.com/imdario/mergo v0.3.16
 	github.com/joho/godotenv v1.5.1
 	github.com/lmittmann/tint v1.1.2
-	github.com/onsi/gomega v1.39.1
+	github.com/onsi/gomega v1.40.0
 	github.com/peterbourgon/ff/v4 v4.0.0-beta.1
 	github.com/phuslu/log v1.0.120
 	github.com/prometheus/client_golang v1.24.1
@@ -28,8 +28,8 @@ require (
 	k8s.io/client-go v0.36.3
 	k8s.io/kubectl v0.36.3
 	sigs.k8s.io/controller-runtime v0.24.1
-	sigs.k8s.io/gateway-api v1.5.0
-	sigs.k8s.io/gateway-api/conformance v1.5.1
+	sigs.k8s.io/gateway-api v1.6.3
+	sigs.k8s.io/gateway-api/conformance v1.6.3
 	sigs.k8s.io/yaml v1.6.0
 )
 

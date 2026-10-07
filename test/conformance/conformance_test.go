@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -29,7 +28,6 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -89,7 +87,7 @@ func TestConformance(t *testing.T) {
 	require.NoError(t, v1alpha3.Install(c.Scheme()))
 	require.NoError(t, apiextensionsv1.AddToScheme(c.Scheme()))
 
-	supportedFeatures := sets.New(
+	supportedFeatures := []features.FeatureName{
 		features.SupportGateway,
 		features.SupportHTTPRoute,
 		features.SupportReferenceGrant,
@@ -100,15 +98,15 @@ func TestConformance(t *testing.T) {
 		// same conditional-candidate machinery as header matching.
 		features.SupportHTTPRouteMethodMatching,
 		features.SupportHTTPRouteQueryParamMatching,
-	)
+	}
 
-	conformanceProfiles := sets.New(
+	conformanceProfiles := []suite.ConformanceProfileName{
 		suite.GatewayHTTPConformanceProfileName,
-	)
+	}
 
 	if os.Getenv("HUG_TEST_TLS") == "1" {
-		conformanceProfiles.Insert(suite.GatewayTLSConformanceProfileName)
-		supportedFeatures.Insert(features.SupportTLSRoute)
+		conformanceProfiles = append(conformanceProfiles, suite.GatewayTLSConformanceProfileName)
+		supportedFeatures = append(supportedFeatures, features.SupportTLSRoute)
 	}
 
 	reportOutput := envOrDefault("CONFORMANCE_REPORT_OUTPUT", "conformance-report.yaml")
@@ -116,29 +114,38 @@ func TestConformance(t *testing.T) {
 	nodeIP := getNodeIP(context.Background(), cs)
 	t.Logf("NodeIP %s", nodeIP)
 
+	// v1.6 moved the CLI flags into ConfigurableOptions; ApplyAll only
+	// copies flags explicitly set on the command line, so the registry
+	// defaults must be restored by hand.
+	var cfgOpts suite.ConfigurableOptions
+	flags.ApplyAll(&cfgOpts)
+
 	opts := suite.ConformanceOptions{
-		Client:               c,
-		Clientset:            cs,
-		RestConfig:           cfg,
-		GatewayClassName:     gwClassName,
-		Debug:                showDebug,
-		CleanupBaseResources: true,
-		ManifestFS:           []fs.FS{&conformance.Manifests},
-		SupportedFeatures:    supportedFeatures,
-		ConformanceProfiles:  conformanceProfiles,
-		TimeoutConfig:        conformanceconfig.DefaultTimeoutConfig(),
-		AllowCRDsMismatch:    true,
-		SkipProvisionalTests: true,
-		Implementation: confv1.Implementation{
-			Organization: "haproxytech",
-			Project:      "haproxy-unified-gateway",
-			URL:          "https://github.com/haproxytech/haproxy-unified-gateway",
-			Version:      "dev",
-			Contact:      []string{"https://github.com/haproxytech/haproxy-unified-gateway/issues"},
-		},
-		RunTest:   *flags.RunTest,
-		SkipTests: strings.FieldsFunc(*flags.SkipTests, func(r rune) bool { return r == ',' }),
+		ConfigurableOptions: cfgOpts,
+		Client:              c,
+		Clientset:           cs,
+		RestConfig:          cfg,
+		ManifestFS:          []fs.FS{&conformance.Manifests},
 	}
+	opts.Implementation = confv1.Implementation{
+		Organization: "haproxytech",
+		Project:      "haproxy-unified-gateway",
+		URL:          "https://github.com/haproxytech/haproxy-unified-gateway",
+		Version:      "dev",
+		Contact:      []string{"https://github.com/haproxytech/haproxy-unified-gateway/issues"},
+	}
+	opts.GatewayClassName = gwClassName
+	opts.Debug = showDebug
+	// Upstream default: test manifests are deleted after each test. Without
+	// this, routes and gateways pile up across the suite: stale catch-all
+	// routes break 404 expectations and port conflicts break condition tests.
+	opts.CleanupTestResources = true
+	opts.CleanupBaseResources = true
+	opts.SupportedFeatures = supportedFeatures
+	opts.ConformanceProfiles = conformanceProfiles
+	opts.TimeoutConfig = conformanceconfig.DefaultTimeoutConfig()
+	opts.AllowCRDsMismatch = true
+	opts.SkipProvisionalTests = true
 
 	t.Logf("conformance run test %s", opts.RunTest)
 	t.Logf("conformance skip tests %s", opts.SkipTests)

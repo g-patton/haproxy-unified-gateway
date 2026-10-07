@@ -251,6 +251,22 @@ func (g *Gateway) checkGatewayClassIsValid(controllerStore ControllerStore) {
 	}
 }
 
+// unsupportedProtocolListeners counts listeners that failed their protocol
+// check. checkProtocol runs for every listener before BuildConditions, so a
+// false verdict always means an unsupported protocol.
+func (g *Gateway) unsupportedProtocolListeners() (invalid, total int) {
+	for _, l := range g.Listeners {
+		if l == nil {
+			continue
+		}
+		total++
+		if !l.CheckProtocol.Valid {
+			invalid++
+		}
+	}
+	return invalid, total
+}
+
 // checkListenerConflicts on the Gateway checks if there is at least one Listener that has no conflict
 // - if there is at least one listener for this Gateway that has no conflict, then the Gateway status is "Accepted"
 // - if none listener are valid, then the Gateway condition type Accepted is False
@@ -278,9 +294,10 @@ func (g *Gateway) checkListenerConflicts(mapPort2ListenerConflict map[gatewayv1.
 		}
 	} else {
 		// 3- No listener conflict for this Gateway
+		// No conditions here: BuildConditions must stay free to derive the
+		// Accepted reason from unsupported-protocol listeners.
 		g.CheckConflict = CheckResult{
-			Valid:      true,
-			Conditions: conditions.NewGatewayAcceptedOK(),
+			Valid: true,
 		}
 	}
 	g.Valid = g.Valid && g.CheckConflict.Valid
@@ -321,7 +338,17 @@ func (g *Gateway) BuildConditions() {
 		return
 	}
 
-	g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedOK())
+	// Listeners with unsupported protocols surface in the Gateway Accepted
+	// condition through the ListenersNotValid reason, per the spec.
+	if invalid, total := g.unsupportedProtocolListeners(); invalid > 0 {
+		if invalid == total {
+			g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedListenersNotValid("All listeners have unsupported protocols"))
+		} else {
+			g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedListenersNotValidAtLeastOneValid("Some listeners have unsupported protocols"))
+		}
+	} else {
+		g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedOK())
+	}
 	g.Conditions.MergeOverrideConditions(conditions.NewGatewayProgrammedOK())
 
 	g.Conditions.SetGeneration(g.K8sResource.GetGeneration())
