@@ -102,9 +102,9 @@ func TestNoBackendRefsRouteMapPaths(t *testing.T) {
 }
 
 func TestNoBackendRefsRouteMapPrecedence(t *testing.T) {
-	refs := []gatewayv1.HTTPBackendRef{{BackendRef: gatewayv1.BackendRef{
-		BackendObjectReference: gatewayv1.BackendObjectReference{Name: "fallback", Port: new(gatewayv1.PortNumber(80))},
-	}}}
+	refs := []gatewayv1.HTTPBackendRef{{
+		Name: "fallback", Port: new(gatewayv1.PortNumber(80)),
+	}}
 	for _, conditional := range []bool{false, true} {
 		t.Run(map[bool]string{false: "first identical rule wins", true: "conditional rule remains a candidate"}[conditional], func(t *testing.T) {
 			mgr, route, files := noBackendRefsMapFixture()
@@ -172,9 +172,9 @@ func TestNoBackendRefsRouteMapRedirectAndInvalidRules(t *testing.T) {
 
 func TestNoBackendRefsRouteMapUpdates(t *testing.T) {
 	mgr, route, files := noBackendRefsMapFixture()
-	refs := []gatewayv1.HTTPBackendRef{{BackendRef: gatewayv1.BackendRef{
-		BackendObjectReference: gatewayv1.BackendObjectReference{Name: "fallback", Port: new(gatewayv1.PortNumber(80))},
-	}}}
+	refs := []gatewayv1.HTTPBackendRef{{
+		Name: "fallback", Port: new(gatewayv1.PortNumber(80)),
+	}}
 	backend, err := mgr.topManager.getBackendName(k8stypes.NamespacedName{Namespace: "ns", Name: "fallback"}, 80, "_")
 	require.NoError(t, err)
 	for _, step := range []struct {

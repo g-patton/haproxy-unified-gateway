@@ -542,9 +542,9 @@ func TestNoBackendRefsRedirectExemption(t *testing.T) {
 func TestNoBackendRefsRelease(t *testing.T) {
 	routeKey := k8stypes.NamespacedName{Namespace: "ns", Name: "route"}
 	matches := blockedPrefixMatches()
-	refs := []gatewayv1.HTTPBackendRef{{BackendRef: gatewayv1.BackendRef{
-		BackendObjectReference: gatewayv1.BackendObjectReference{Name: "svc", Port: new(gatewayv1.PortNumber(80))},
-	}}}
+	refs := []gatewayv1.HTTPBackendRef{{
+		Name: "svc", Port: new(gatewayv1.PortNumber(80)),
+	}}
 
 	t.Run("transition to backendRefs releases the pseudo backend", func(t *testing.T) {
 		mgr := newNoBackendRefsTestMgr()
@@ -592,9 +592,9 @@ func TestNoBackendRefsRelease(t *testing.T) {
 func TestNoBackendRefsNormalRefsUnchanged(t *testing.T) {
 	routeKey := k8stypes.NamespacedName{Namespace: "ns", Name: "route"}
 	mgr := newNoBackendRefsTestMgr()
-	refs := []gatewayv1.HTTPBackendRef{{BackendRef: gatewayv1.BackendRef{
-		BackendObjectReference: gatewayv1.BackendObjectReference{Name: "svc", Port: new(gatewayv1.PortNumber(80))},
-	}}}
+	refs := []gatewayv1.HTTPBackendRef{{
+		Name: "svc", Port: new(gatewayv1.PortNumber(80)),
+	}}
 
 	if err := mgr.upsertHTTPRouteBackends(routeKey, noBackendRefsRoute(backendRefsRule(nil, blockedPrefixMatches(), refs, true))); err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -25,7 +25,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryV1 "k8s.io/api/discovery/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -45,8 +44,9 @@ var httpClient = &http.Client{
 	},
 }
 
+//go:fix inline
 func toPtr[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 // Test_NoBackendRefsRules drives real HTTP requests through HAProxy to prove
@@ -111,24 +111,22 @@ func (s *NoBackendRefsSuite) Test_NoBackendRefsRules() {
 // as a single ready endpoint, so catchall requests are proxied for real.
 func (s *NoBackendRefsSuite) createEchoEndpoints() {
 	endpoints := &discoveryV1.EndpointSlice{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   echoEndpointSlice,
-			Labels: map[string]string{"kubernetes.io/service-name": echoEndpointSlice},
-		},
+		Name:        echoEndpointSlice,
+		Labels:      map[string]string{"kubernetes.io/service-name": echoEndpointSlice},
 		AddressType: discoveryV1.AddressTypeIPv4,
 		Endpoints: []discoveryV1.Endpoint{
 			{
 				Addresses: []string{s.echoServer.address},
 				Conditions: discoveryV1.EndpointConditions{
-					Ready:   toPtr(true),
-					Serving: toPtr(true),
+					Ready:   new(true),
+					Serving: new(true),
 				},
 			},
 		},
 		Ports: []discoveryV1.EndpointPort{
 			{
-				Name:     toPtr("http"),
-				Port:     toPtr(int32(s.echoServer.port)),
+				Name:     new("http"),
+				Port:     new(int32(s.echoServer.port)),
 				Protocol: toPtr(corev1.ProtocolTCP),
 			},
 		},
@@ -140,7 +138,7 @@ func (s *NoBackendRefsSuite) createEchoEndpoints() {
 
 func (s *NoBackendRefsSuite) deleteEchoEndpoints() {
 	endpoints := &discoveryV1.EndpointSlice{
-		ObjectMeta: metav1.ObjectMeta{Name: echoEndpointSlice},
+		Name: echoEndpointSlice,
 	}
 	endpoints.Namespace = s.Test().Namespace
 	err := utils.DeleteRuntimeObject(s.Test().Ctx, s.Test().Client, endpoints, true)
