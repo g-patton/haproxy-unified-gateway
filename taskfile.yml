@@ -21,12 +21,11 @@ vars:
   CLOUD_PROVIDER_KIND: sigs.k8s.io/cloud-provider-kind@v0.11.1
   CONTROLLER_GEN: sigs.k8s.io/controller-tools/cmd/controller-gen@v0.22.0
   CHECK_COMMIT: github.com/haproxytech/check-commit/v5@v5.8.3
-  BETTERALIGN: github.com/dkorunic/betteralign/cmd/betteralign@v0.15.1
-  STATICCHECK: honnef.co/go/tools/cmd/staticcheck@v0.8.1
+  BETTERALIGN: github.com/dkorunic/betteralign/cmd/betteralign@v0.15.2
   GO_LICENSES: github.com/google/go-licenses/v2@v2.0.1
   GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.8.0
   GOFUMPT: mvdan.cc/gofumpt@v0.12.0
-  REVIVE: github.com/mgechev/revive@v1.16.0
+  REVIVE: github.com/mgechev/revive@v1.17.1
   GOTESTSUM: gotest.tools/gotestsum@v1.13.0
 
 dotenv:
@@ -114,10 +113,11 @@ tasks:
     deps:
       - task: check-go-tools
         vars:
-          TOOLS: [BETTERALIGN, REVIVE, STATICCHECK]
+          TOOLS: [BETTERALIGN, REVIVE]
     cmds:
       - "$(check-go-tool {{.REVIVE}}) -config revive.toml -formatter friendly -set_exit_status ./..."
-      - "$(check-go-tool {{.STATICCHECK}}) ./..."
+      # tools/go.mod pins an x/tools that reads Go 1.27 export data
+      - '"$(task install-staticcheck)" ./...'
       - "$(check-go-tool {{.BETTERALIGN}}) ./..."
 
   format:
