@@ -26,6 +26,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -226,12 +227,14 @@ func (r *GatewayReconciler) reconcileDeployment(ctx context.Context, gw *gateway
 
 	c0 := &existing.Spec.Template.Spec.Containers[0]
 	d0 := desired.Spec.Template.Spec.Containers[0]
-	if c0.Image == d0.Image && slices.Equal(c0.Args, d0.Args) {
+	// Env must be compared too: upgrades heal deployments created before GWAPI_COMPAT.
+	if c0.Image == d0.Image && slices.Equal(c0.Args, d0.Args) && cmp.Equal(c0.Env, d0.Env) {
 		return nil
 	}
 	_, _ = fmt.Fprintf(os.Stderr, "deployer: updating deployment %s/%s\n", r.Config.DeployerNs, resourceName)
 	c0.Args = d0.Args
 	c0.Image = d0.Image
+	c0.Env = d0.Env
 	return r.Update(ctx, existing)
 }
 
@@ -322,6 +325,8 @@ func (r *GatewayReconciler) buildDeployment(resourceName, gwNS, gwName, gatewayF
 								{Name: "POD_IP", ValueFrom: &corev1.EnvVarSource{
 									FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"},
 								}},
+								// Conformance expects 500 on matched backendless routes: always enable compat.
+								{Name: "GWAPI_COMPAT", Value: "1"},
 							},
 							SecurityContext: &corev1.SecurityContext{
 								RunAsNonRoot:             new(true),

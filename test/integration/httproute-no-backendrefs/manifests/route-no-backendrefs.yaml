@@ -1,0 +1,54 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-no-backendrefs
+spec:
+  parentRefs:
+  - name: hug-gateway
+    sectionName: http
+  hostnames:
+  - "nobe.haproxy"
+  rules:
+  # rule 0: backendRefs omitted on an exact path, the catchall must not serve it
+  - matches:
+    - path:
+        type: Exact
+        value: /nil-refs
+  # rule 1: backendRefs explicitly empty, same termination as rule 0
+  - matches:
+    - path:
+        type: Exact
+        value: /empty-refs
+    backendRefs: []
+  # rule 2: a backendless rule with a redirect filter must still redirect
+  - matches:
+    - path:
+        type: Exact
+        value: /redirect-refs
+    filters:
+    - type: RequestRedirect
+      requestRedirect:
+        scheme: https
+        hostname: example.com
+        statusCode: 302
+  # rule 3: backendless prefix rule, no fallthrough to the catchall for its subtree
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /blocked-refs
+  # rule 4: conditional backendless candidate sharing the catchall path entry
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+      headers:
+      - name: x-backend
+        value: none
+  # rule 5: unconditional catchall backed by the real echo service
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: http-echo
+      port: 80

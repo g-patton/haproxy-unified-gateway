@@ -159,31 +159,26 @@ func (b *RouteMgrImpl) onValidHTTPRouteUpserted(origin maps.ResourceOrigin, rout
 	desired := newDesiredBackendsMaps()
 
 	for ruleIdx, rule := range route.Rules {
-		// Rules with a RequestRedirect filter map directly to a redirect pseudo-backend.
-		// Handle this before the rule.Valid check since redirect rules may have no
-		// backendRefs (which causes rule.Valid to be false).
+		// Redirect responses take precedence over backendless error responses.
 		if hasRedirectFilter(rule.K8sResource.Filters) {
 			// Invalid filters or unprogrammable matches drop the rule with a status condition.
 			if !rule.CheckFilters.Valid || !rule.CheckMatches.Valid {
 				continue
 			}
 			redirectBeName := b.topManager.getRedirectBackendName(rule.K8sResource.Filters)
-			for _, match := range rule.K8sResource.Matches {
-				bucket, _ := desired.resolveEntry(routeValueName, match)
-				conds, err := maps.NormalizeHTTPRouteMatch(match)
-				if err != nil {
-					continue
-				}
-				bucket[desiredValueKey(conds, ruleIdx, redirectBeName)] = &maps.WeightedValue{
-					ValueName:  redirectBeName,
-					Conditions: conditionsOrNil(conds),
-					RuleIdx:    ruleIdx,
-				}
-			}
+			desired.addHTTPRouteTarget(routeValueName, rule.K8sResource.Matches, ruleIdx, redirectBeName)
 			continue
 		}
 
 		if !rule.Valid {
+			continue
+		}
+
+		if len(rule.K8sResource.BackendRefs) == 0 {
+			// Matching backendless rules must terminate instead of falling through.
+			backendName := b.topManager.getNoBackendRefsBackendName(rule.K8sResource.Filters,
+				extractFirstPathPrefix(rule.K8sResource.Matches))
+			desired.addHTTPRouteTarget(routeValueName, rule.K8sResource.Matches, ruleIdx, backendName)
 			continue
 		}
 
@@ -273,6 +268,21 @@ type desiredBackendsMaps struct {
 	exact  map[maps.EntryKey]map[string]*maps.WeightedValue
 	prefix map[maps.EntryKey]map[string]*maps.WeightedValue
 	regex  map[maps.EntryKey]map[string]*maps.WeightedValue
+}
+
+func (d *desiredBackendsMaps) addHTTPRouteTarget(hostname string, matches []gatewayv1.HTTPRouteMatch, ruleIdx int, backendName string) {
+	for _, match := range matches {
+		bucket, _ := d.resolveEntry(hostname, match)
+		conds, err := maps.NormalizeHTTPRouteMatch(match)
+		if err != nil {
+			continue
+		}
+		bucket[desiredValueKey(conds, ruleIdx, backendName)] = &maps.WeightedValue{
+			ValueName:  backendName,
+			Conditions: conditionsOrNil(conds),
+			RuleIdx:    ruleIdx,
+		}
+	}
 }
 
 func newDesiredBackendsMaps() desiredBackendsMaps {

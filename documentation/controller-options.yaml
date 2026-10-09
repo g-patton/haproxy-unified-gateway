@@ -70,6 +70,13 @@ FrontendNameTemplate:
     args:
         - name: template
           type: string
+GWAPICompat:
+    name: GWAPICompat
+    comment: |
+        GWAPICompat answers 500 on matched backendless rules, for conformance.
+    args:
+        - name: compat
+          type: bool
 GatewayNsName:
     name: GatewayNsName
     comment: ""

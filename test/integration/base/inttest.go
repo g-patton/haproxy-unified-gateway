@@ -100,6 +100,9 @@ type IntTest struct {
 	// support. Off by default so suites that don't exercise Ingress do not get
 	// the synthetic gateway's extra frontends.
 	EnableIngress bool
+	// GWAPICompat switches backendless-rule responses from the legacy 404
+	// to the spec-mandated 500.
+	GWAPICompat bool
 }
 
 func NewIntTest(t *testing.T, crdRelativePath string, levelsUp int) (test IntTest, err error) {

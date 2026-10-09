@@ -32,6 +32,7 @@ Available options:
 | EmptyIngressClass | `empty`(bool) |
 | EnableIngress | `enable`(bool) |
 | FrontendNameTemplate | `template`(string) |
+| GWAPICompat | `compat`(bool) |
 | GatewayNsName | `gatewayNsName`(types.NamespacedName) |
 | HTTPIngressFrontendPort | `port`(int) |
 | HTTPSIngressFrontendPort | `port`(int) |
@@ -215,6 +216,20 @@ import (
 )
 
 controller, err := controller.New(opt.FrontendNameTemplate(template))
+```
+
+### GWAPICompat
+
+GWAPICompat answers 500 on matched backendless rules, for conformance.
+
+Example:
+```go
+import (
+  github.com/haproxytech/haproxy-unified-gateway/k8s/gate
+  github.com/haproxytech/haproxy-unified-gateway/k8s/gate/options
+)
+
+controller, err := controller.New(opt.GWAPICompat(compat))
 ```
 
 ### GatewayNsName

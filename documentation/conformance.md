@@ -27,6 +27,10 @@ configured `GatewayClass`, creates:
 - one **Service** labeled so the controller can report its address in the Gateway
   status.
 
+Every generated controller container gets `GWAPI_COMPAT=1` unconditionally:
+conformance expects `500` when a route cannot reach a backend (see
+[matching.md](matching.md)), so compatibility mode is always on here.
+
 The Service type used for the per-Gateway Services depends on the environment:
 
 | Environment | `HUG_SERVICE_TYPE` | Service type |

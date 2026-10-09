@@ -66,6 +66,7 @@ func hugConfig(test *IntTest, t *testing.T) hugconfig.HUGConfig {
 			logging.LogCategoryMapsStorage:   slog.LevelDebug,
 		},
 		EnableIngress: test.EnableIngress,
+		GWAPICompat:   test.GWAPICompat,
 		// Identify the HUG Kubernetes service so controller addresses can be
 		// resolved (used for Gateway and Ingress LoadBalancer status). Init does
 		// not apply this default, so set it explicitly here.

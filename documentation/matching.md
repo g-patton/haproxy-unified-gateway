@@ -57,6 +57,23 @@ Point 6 is currently approximated: ties across routes on the same hostname
 are broken by alphabetical `{namespace}/{name}` order instead of creation
 timestamp first.
 
+## Matched rules without backends
+
+A rule that matches a request but has no `backendRefs` (omitted, or an
+empty list) terminates the match: the request never falls through to a
+less specific rule, on the same Route or on another one. By default such a
+request gets a `404`, the same as an unmatched one.
+
+`--gwapi-compat` (or `GWAPI_COMPAT=1`) switches that response to `500`,
+the status the Gateway API conformance suite expects when a route cannot
+reach any backend. Requests that match no rule stay `404` in both modes,
+and a matching rule whose only action is a `RequestRedirect` filter keeps
+redirecting: the flag only changes the status-code of the terminal
+backendless rule.
+
+Conformance deployments enable this flag on every generated controller (see
+[conformance.md](conformance.md)).
+
 ## Status conditions
 
 Rules whose match conditions cannot be programmed are dropped:

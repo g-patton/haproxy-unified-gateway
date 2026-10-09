@@ -16,11 +16,14 @@ package haproxy
 import (
 	"io"
 	"log/slog"
+	"reflect"
+	"strings"
 	"testing"
 
 	v3 "github.com/haproxytech/haproxy-unified-gateway/api/gate/v3"
 	"github.com/haproxytech/haproxy-unified-gateway/k8s/gate/store"
 	"github.com/haproxytech/haproxy-unified-gateway/k8s/gate/tree"
+	"github.com/haproxytech/haproxy-unified-gateway/k8s/gate/utils"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8stypes "k8s.io/apimachinery/pkg/types"
@@ -327,4 +330,307 @@ func TestRedirectRuleWithInvalidMatchesKeepsNoBackend(t *testing.T) {
 			t.Errorf("expected the redirect backend %q to be upserted", beName)
 		}
 	})
+}
+
+// newNoBackendRefsTestMgr builds a manager with initialized owners and cycle
+// tracking, enough to exercise upsertHTTPRouteBackends end to end.
+func newNoBackendRefsTestMgr() *HaproxyConfMgrImpl {
+	mgr := newTestBackendMgr(nil, nil)
+	mgr.params.LinkID = "hug"
+	mgr.params.BackendNameTemplate = "{{ .LINK_ID }}_{{ .SERVICE_NAMESPACE }}_{{ .SERVICE_NAME }}_{{ .SERVICE_PORT }}_{{ .FILTER_HASH }}"
+	mgr.backendOwners = NewBackendOwners()
+	mgr.backendsImpactedInCycle = BackendsImpactedInCycle{
+		Upserted:     map[string]map[client.ObjectKey]BackendImpactedInCycle{},
+		Deleted:      map[string]struct{}{},
+		Unreferenced: map[string]struct{}{},
+	}
+	return mgr
+}
+
+// backendRefsRule builds a valid rule with the given filters, matches and refs.
+func backendRefsRule(filters []gatewayv1.HTTPRouteFilter, matches []gatewayv1.HTTPRouteMatch,
+	refs []gatewayv1.HTTPBackendRef, valid bool,
+) *tree.HTTPRouteRule {
+	rule := &tree.HTTPRouteRule{
+		K8sResource: gatewayv1.HTTPRouteRule{
+			Filters:     filters,
+			Matches:     matches,
+			BackendRefs: refs,
+		},
+		CheckBackendRef: utils.NewKeyMap[gatewayv1.BackendObjectReference, tree.CheckResult](utils.BackendObjectReferenceToKey),
+		CheckFilters:    tree.CheckResult{Valid: valid},
+		CheckMatches:    tree.CheckResult{Valid: valid},
+		Valid:           valid,
+	}
+	for _, ref := range refs {
+		rule.CheckBackendRef.Set(ref.BackendObjectReference, tree.CheckResult{Valid: valid})
+	}
+	return rule
+}
+
+func noBackendRefsRoute(rules ...*tree.HTTPRouteRule) *tree.HTTPRoute {
+	return &tree.HTTPRoute{
+		K8sResource: &gatewayv1.HTTPRoute{Namespace: "ns", Name: "route", Generation: 1},
+		Valid:       true,
+		Rules:       rules,
+	}
+}
+
+func corsFilter() gatewayv1.HTTPRouteFilter {
+	return gatewayv1.HTTPRouteFilter{
+		Type: gatewayv1.HTTPRouteFilterCORS,
+		CORS: &gatewayv1.HTTPCORSFilter{AllowOrigins: []gatewayv1.CORSOrigin{"*"}},
+	}
+}
+
+func blockedPrefixMatches() []gatewayv1.HTTPRouteMatch {
+	return []gatewayv1.HTTPRouteMatch{{
+		Path: &gatewayv1.HTTPPathMatch{
+			Type:  new(gatewayv1.PathMatchPathPrefix),
+			Value: new("/blocked"),
+		},
+	}}
+}
+
+// A valid backendless rule must be upserted and owned as a response-only
+// pseudo-backend, whether BackendRefs is nil or empty.
+func TestNoBackendRefsRuleUpsert(t *testing.T) {
+	routeKey := k8stypes.NamespacedName{Namespace: "ns", Name: "route"}
+
+	for name, refs := range map[string][]gatewayv1.HTTPBackendRef{
+		"nil backend refs":   nil,
+		"empty backend refs": {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mgr := newNoBackendRefsTestMgr()
+			filters := []gatewayv1.HTTPRouteFilter{corsFilter()}
+			matches := blockedPrefixMatches()
+			route := noBackendRefsRoute(backendRefsRule(filters, matches, refs, true))
+
+			beName := mgr.getNoBackendRefsBackendName(filters, "/blocked")
+			if !strings.HasPrefix(beName, "hug_no_backend_refs_") {
+				t.Fatalf("unexpected pseudo-backend name %q", beName)
+			}
+
+			if err := mgr.upsertHTTPRouteBackends(routeKey, route); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			impacted, ok := mgr.backendsImpactedInCycle.Upserted[beName][routeKey]
+			if !ok {
+				t.Fatalf("expected the pseudo-backend %q to be upserted, got %v", beName, mgr.backendsImpactedInCycle.Upserted)
+			}
+			if !impacted.IsNoBackendRefs || impacted.IsRedirect {
+				t.Errorf("expected a no-backend-refs pseudo-backend, got %+v", impacted)
+			}
+			if impacted.MatchPrefix != "/blocked" {
+				t.Errorf("MatchPrefix: want /blocked, got %q", impacted.MatchPrefix)
+			}
+			if !reflect.DeepEqual(impacted.RuleFilters, filters) {
+				t.Errorf("RuleFilters not preserved: %+v", impacted.RuleFilters)
+			}
+			if _, owned := mgr.backendOwners.getBackendsReferencedByHTTPRoute(routeKey)[beName]; !owned {
+				t.Errorf("expected the route to own the pseudo-backend %q", beName)
+			}
+		})
+	}
+}
+
+// The pseudo-backend name must separate rules whose filters or match prefix
+// differ, since both shape the generated rules.
+func TestNoBackendRefsBackendNameUniqueness(t *testing.T) {
+	mgr := newNoBackendRefsTestMgr()
+	cors := corsFilter()
+
+	first := mgr.getNoBackendRefsBackendName(nil, "")
+	second := mgr.getNoBackendRefsBackendName(nil, "")
+	if first != second {
+		t.Fatal("same filters and prefix must produce the same name")
+	}
+	if mgr.getNoBackendRefsBackendName([]gatewayv1.HTTPRouteFilter{cors}, "/a") ==
+		mgr.getNoBackendRefsBackendName([]gatewayv1.HTTPRouteFilter{cors}, "/b") {
+		t.Error("different match prefixes must produce different names")
+	}
+	other := corsFilter()
+	other.CORS.AllowOrigins = []gatewayv1.CORSOrigin{"https://example.com"}
+	if mgr.getNoBackendRefsBackendName([]gatewayv1.HTTPRouteFilter{cors}, "/a") ==
+		mgr.getNoBackendRefsBackendName([]gatewayv1.HTTPRouteFilter{other}, "/a") {
+		t.Error("different filters must produce different names")
+	}
+}
+
+// The terminal http-request return must come last: a filter direct-response
+// (CORS preflight 204) runs first. Default status is 404, compat is 500.
+func TestNoBackendRefsBackendTerminalRule(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		compat bool
+		status int64
+	}{
+		{name: "default status is 404", status: 404},
+		{name: "GWAPICompat status is 500", compat: true, status: 500},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mgr := newNoBackendRefsTestMgr()
+			mgr.params.GWAPICompat = test.compat
+			filters := []gatewayv1.HTTPRouteFilter{corsFilter()}
+
+			be := mgr.newNoBackendRefsBackend("be", nil, filters, "/blocked")
+			if be.Mode != "http" {
+				t.Errorf("Mode: want http, got %q", be.Mode)
+			}
+
+			rules := be.HTTPRequestRuleList
+			if len(rules) != 2 {
+				t.Fatalf("expected a CORS preflight return plus the terminal return, got %d rules", len(rules))
+			}
+			// Filter direct-response first: CORS preflight.
+			if rules[0].Type != "return" || rules[0].ReturnStatusCode == nil || *rules[0].ReturnStatusCode != 204 {
+				t.Errorf("expected the CORS preflight 204 return first, got %+v", rules[0])
+			}
+			if rules[0].CondTest == "" || !strings.Contains(rules[0].CondTest, "method OPTIONS") {
+				t.Errorf("expected the preflight return to stay conditional, got %q", rules[0].CondTest)
+			}
+			// Terminal return last, unconditional, with the configured status.
+			last := rules[len(rules)-1]
+			if last.Type != "return" {
+				t.Errorf("terminal rule type: want return, got %q", last.Type)
+			}
+			if last.ReturnStatusCode == nil || *last.ReturnStatusCode != test.status {
+				t.Errorf("terminal status: want %d, got %+v", test.status, last.ReturnStatusCode)
+			}
+			if last.Cond != "" || last.CondTest != "" {
+				t.Errorf("terminal return must be unconditional, got cond %q %q", last.Cond, last.CondTest)
+			}
+		})
+	}
+}
+
+// Redirect-only rules with no backendRefs keep their redirect pseudo-backend
+// and must not produce a no-backend-refs pseudo-backend.
+func TestNoBackendRefsRedirectExemption(t *testing.T) {
+	routeKey := k8stypes.NamespacedName{Namespace: "ns", Name: "route"}
+	redirectFilters := []gatewayv1.HTTPRouteFilter{{
+		Type:            gatewayv1.HTTPRouteFilterRequestRedirect,
+		RequestRedirect: &gatewayv1.HTTPRequestRedirectFilter{},
+	}}
+
+	mgr := newNoBackendRefsTestMgr()
+	route := noBackendRefsRoute(backendRefsRule(redirectFilters, nil, nil, true))
+	if err := mgr.upsertHTTPRouteBackends(routeKey, route); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantRedirect := mgr.getRedirectBackendName(redirectFilters)
+	if _, ok := mgr.backendsImpactedInCycle.Upserted[wantRedirect][routeKey]; !ok {
+		t.Errorf("expected the redirect backend %q to be upserted", wantRedirect)
+	}
+	for beName := range mgr.backendsImpactedInCycle.Upserted {
+		if strings.Contains(beName, "_no_backend_refs_") {
+			t.Errorf("redirect rule must not create a no-backend-refs backend, got %q", beName)
+		}
+	}
+	for beName := range mgr.backendOwners.getBackendsReferencedByHTTPRoute(routeKey) {
+		if strings.Contains(beName, "_no_backend_refs_") {
+			t.Errorf("redirect rule must not own a no-backend-refs backend, got %q", beName)
+		}
+	}
+}
+
+// The pseudo-backend is released when the rule gains backendRefs, and deleted
+// with the route.
+func TestNoBackendRefsRelease(t *testing.T) {
+	routeKey := k8stypes.NamespacedName{Namespace: "ns", Name: "route"}
+	matches := blockedPrefixMatches()
+	refs := []gatewayv1.HTTPBackendRef{{BackendRef: gatewayv1.BackendRef{
+		BackendObjectReference: gatewayv1.BackendObjectReference{Name: "svc", Port: new(gatewayv1.PortNumber(80))},
+	}}}
+
+	t.Run("transition to backendRefs releases the pseudo backend", func(t *testing.T) {
+		mgr := newNoBackendRefsTestMgr()
+		beName := mgr.getNoBackendRefsBackendName(nil, "/blocked")
+		if err := mgr.upsertHTTPRouteBackends(routeKey, noBackendRefsRoute(backendRefsRule(nil, matches, nil, true))); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if err := mgr.upsertHTTPRouteBackends(routeKey, noBackendRefsRoute(backendRefsRule(nil, matches, refs, true))); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := mgr.backendsImpactedInCycle.Unreferenced[beName]; !ok {
+			t.Errorf("expected %q to be unreferenced after the transition", beName)
+		}
+		owned := mgr.backendOwners.getBackendsReferencedByHTTPRoute(routeKey)
+		if _, ok := owned[beName]; ok {
+			t.Errorf("expected the route not to own %q anymore", beName)
+		}
+		if len(owned) != 1 {
+			t.Errorf("expected exactly one owned backend after the transition, got %v", owned)
+		}
+	})
+
+	t.Run("route deletion deletes the pseudo backend", func(t *testing.T) {
+		mgr := newNoBackendRefsTestMgr()
+		route := noBackendRefsRoute(backendRefsRule(nil, matches, nil, true))
+		beName := mgr.getNoBackendRefsBackendName(nil, "/blocked")
+		if err := mgr.upsertHTTPRouteBackends(routeKey, route); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if err := mgr.onDeletedHTTPRoute(routeKey, route); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := mgr.backendsImpactedInCycle.Deleted[beName]; !ok {
+			t.Errorf("expected %q to be deleted with the route", beName)
+		}
+		if owned := mgr.backendOwners.getBackendsReferencedByHTTPRoute(routeKey); len(owned) != 0 {
+			t.Errorf("expected the route to own no backend, got %v", owned)
+		}
+	})
+}
+
+// Rules with valid backendRefs keep the normal service-backed backends.
+func TestNoBackendRefsNormalRefsUnchanged(t *testing.T) {
+	routeKey := k8stypes.NamespacedName{Namespace: "ns", Name: "route"}
+	mgr := newNoBackendRefsTestMgr()
+	refs := []gatewayv1.HTTPBackendRef{{BackendRef: gatewayv1.BackendRef{
+		BackendObjectReference: gatewayv1.BackendObjectReference{Name: "svc", Port: new(gatewayv1.PortNumber(80))},
+	}}}
+
+	if err := mgr.upsertHTTPRouteBackends(routeKey, noBackendRefsRoute(backendRefsRule(nil, blockedPrefixMatches(), refs, true))); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want, err := mgr.getBackendName(k8stypes.NamespacedName{Namespace: "ns", Name: "svc"}, 80, "_")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	impacted, ok := mgr.backendsImpactedInCycle.Upserted[want][routeKey]
+	if !ok {
+		t.Fatalf("expected the normal backend %q to be upserted, got %v", want, mgr.backendsImpactedInCycle.Upserted)
+	}
+	if impacted.IsNoBackendRefs || impacted.IsRedirect {
+		t.Errorf("normal backend must not be flagged as pseudo, got %+v", impacted)
+	}
+	for beName := range mgr.backendsImpactedInCycle.Upserted {
+		if strings.Contains(beName, "_no_backend_refs_") {
+			t.Errorf("backendRefs must not create a no-backend-refs backend, got %q", beName)
+		}
+	}
+}
+
+// Invalid backendless rules must not be handled at all.
+func TestNoBackendRefsInvalidRuleNotHandled(t *testing.T) {
+	routeKey := k8stypes.NamespacedName{Namespace: "ns", Name: "route"}
+	mgr := newNoBackendRefsTestMgr()
+	route := noBackendRefsRoute(backendRefsRule(nil, blockedPrefixMatches(), nil, false))
+
+	if err := mgr.upsertHTTPRouteBackends(routeKey, route); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mgr.backendsImpactedInCycle.Upserted) != 0 {
+		t.Errorf("expected no upserted backend, got %v", mgr.backendsImpactedInCycle.Upserted)
+	}
+	if owned := mgr.backendOwners.getBackendsReferencedByHTTPRoute(routeKey); len(owned) != 0 {
+		t.Errorf("expected no owned backend, got %v", owned)
+	}
 }

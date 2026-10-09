@@ -63,6 +63,8 @@ type HaproxyConfParams struct {
 	// Gateway listeners: the client address is read from the PROXY protocol
 	// header sent by the load balancer in front of HAProxy.
 	AcceptProxy bool
+	// GWAPICompat makes matched backendless rules respond 500, for Gateway API conformance.
+	GWAPICompat bool
 }
 
 type HaproxyDirs struct {

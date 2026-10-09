@@ -83,6 +83,7 @@ func SetupGateConfig(hugConfig hugconfig.HUGConfig) gateconfig.GateConfigOptions
 		opt.EmptyIngressClass(hugConfig.EmptyIngressClass),
 		opt.EnableIngress(hugConfig.EnableIngress),
 		opt.DisableIngressStatusUpdate(hugConfig.DisableIngressStatusUpdate),
+		opt.GWAPICompat(hugConfig.GWAPICompat),
 	}
 	if hugConfig.DisableIPv4 {
 		opts = append(opts, opt.DisableIPv4())
