@@ -28,7 +28,7 @@ configured `GatewayClass`, creates:
   status.
 
 Every generated controller container gets `GWAPI_COMPAT=1` unconditionally:
-conformance expects `500` when a route cannot reach a backend (see
+conformance expects `500` when a matched rule has no backendRefs (see
 [matching.md](matching.md)), so compatibility mode is always on here.
 
 The Service type used for the per-Gateway Services depends on the environment:
