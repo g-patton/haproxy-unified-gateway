@@ -313,14 +313,17 @@ func (r *GatewayReconciler) buildDeployment(resourceName, gwNS, gwName, gatewayF
 								},
 							},
 							Env: []corev1.EnvVar{
+								// APIVersion is set because the API server fills it in when
+								// storing the Deployment: without it the reconcile comparison
+								// never matches and every reconcile sends an update.
 								{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{
-									FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
+									FieldRef: &corev1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "metadata.name"},
 								}},
 								{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{
-									FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+									FieldRef: &corev1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "metadata.namespace"},
 								}},
 								{Name: "POD_IP", ValueFrom: &corev1.EnvVarSource{
-									FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"},
+									FieldRef: &corev1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "status.podIP"},
 								}},
 							},
 							SecurityContext: &corev1.SecurityContext{
