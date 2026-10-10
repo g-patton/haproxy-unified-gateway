@@ -54,30 +54,40 @@ func getCondition(conds generic.Conditions, condType generic.ConditionType) (met
 
 func TestGatewayBuildConditions_UnsupportedProtocol(t *testing.T) {
 	accepted := generic.ConditionType(gatewayv1.GatewayConditionAccepted)
+	programmed := generic.ConditionType(gatewayv1.GatewayConditionProgrammed)
 
 	tests := []struct {
-		name       string
-		protocols  []gatewayv1.ProtocolType
-		wantStatus metav1.ConditionStatus
-		wantReason string
+		name                 string
+		protocols            []gatewayv1.ProtocolType
+		wantStatus           metav1.ConditionStatus
+		wantReason           string
+		wantProgrammedStatus metav1.ConditionStatus
+		wantProgrammedReason string
 	}{
 		{
-			name:       "all listeners supported",
-			protocols:  []gatewayv1.ProtocolType{gatewayv1.HTTPProtocolType, gatewayv1.HTTPSProtocolType},
-			wantStatus: metav1.ConditionTrue,
-			wantReason: "Accepted",
+			name:                 "all listeners supported",
+			protocols:            []gatewayv1.ProtocolType{gatewayv1.HTTPProtocolType, gatewayv1.HTTPSProtocolType},
+			wantStatus:           metav1.ConditionTrue,
+			wantReason:           "Accepted",
+			wantProgrammedStatus: metav1.ConditionTrue,
+			wantProgrammedReason: "Programmed",
 		},
 		{
-			name:       "some listeners unsupported",
-			protocols:  []gatewayv1.ProtocolType{gatewayv1.HTTPProtocolType, "INVALID"},
-			wantStatus: metav1.ConditionTrue,
-			wantReason: "ListenersNotValid",
+			name:                 "some listeners unsupported",
+			protocols:            []gatewayv1.ProtocolType{gatewayv1.HTTPProtocolType, "INVALID"},
+			wantStatus:           metav1.ConditionTrue,
+			wantReason:           "ListenersNotValid",
+			wantProgrammedStatus: metav1.ConditionTrue,
+			wantProgrammedReason: "Programmed",
 		},
 		{
-			name:       "all listeners unsupported",
-			protocols:  []gatewayv1.ProtocolType{"INVALID"},
-			wantStatus: metav1.ConditionFalse,
-			wantReason: "ListenersNotValid",
+			// Rejected Gateways must not look ready to Programmed waiters.
+			name:                 "all listeners unsupported",
+			protocols:            []gatewayv1.ProtocolType{"INVALID"},
+			wantStatus:           metav1.ConditionFalse,
+			wantReason:           "ListenersNotValid",
+			wantProgrammedStatus: metav1.ConditionFalse,
+			wantProgrammedReason: "ListenersNotValid",
 		},
 	}
 
@@ -88,6 +98,9 @@ func TestGatewayBuildConditions_UnsupportedProtocol(t *testing.T) {
 			status, reason := getCondition(gw.Conditions, accepted)
 			assert.Equal(t, tt.wantStatus, status)
 			assert.Equal(t, tt.wantReason, reason)
+			programmedStatus, programmedReason := getCondition(gw.Conditions, programmed)
+			assert.Equal(t, tt.wantProgrammedStatus, programmedStatus)
+			assert.Equal(t, tt.wantProgrammedReason, programmedReason)
 		})
 	}
 }

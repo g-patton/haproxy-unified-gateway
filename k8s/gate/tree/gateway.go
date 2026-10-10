@@ -342,10 +342,13 @@ func (g *Gateway) BuildConditions() {
 	// condition through the ListenersNotValid reason, per the spec.
 	if invalid, total := g.unsupportedProtocolListeners(); invalid > 0 {
 		if invalid == total {
+			// A rejected Gateway must not look ready to automation waiting on Programmed.
 			g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedListenersNotValid("All listeners have unsupported protocols"))
-		} else {
-			g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedListenerNotValidAtLeast1Valid("Some listeners have unsupported protocols"))
+			g.Conditions.MergeOverrideConditions(conditions.NewGatewayProgrammedListenersNotValid("All listeners have unsupported protocols"))
+			g.Conditions.SetGeneration(g.K8sResource.GetGeneration())
+			return
 		}
+		g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedListenerNotValidAtLeast1Valid("Some listeners have unsupported protocols"))
 	} else {
 		g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedOK())
 	}
