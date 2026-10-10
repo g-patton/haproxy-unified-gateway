@@ -49,6 +49,15 @@ func TestBuildDeploymentAlwaysSetsGWAPICompat(t *testing.T) {
 	value, ok := gwAPICompatEnv(deploy.Spec.Template.Spec.Containers[0].Env)
 	require.True(t, ok, "generated controller containers must set GWAPI_COMPAT")
 	require.Equal(t, "1", value)
+
+	// The API server fills in the field-selector version, so the desired
+	// spec must match or every reconcile sends a no-op update.
+	for _, env := range deploy.Spec.Template.Spec.Containers[0].Env {
+		if env.ValueFrom == nil || env.ValueFrom.FieldRef == nil {
+			continue
+		}
+		require.Equal(t, "v1", env.ValueFrom.FieldRef.APIVersion, "field ref %s must declare its api version", env.Name)
+	}
 }
 
 // Deployments left over from earlier runs must be healed to compat mode.
