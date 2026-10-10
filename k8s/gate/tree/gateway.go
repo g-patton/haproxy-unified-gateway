@@ -289,7 +289,7 @@ func (g *Gateway) checkListenerConflicts(mapPort2ListenerConflict map[gatewayv1.
 			// but at least 1 is Valid
 			g.CheckConflict = CheckResult{
 				Valid:      true,
-				Conditions: conditions.NewGatewayAcceptedListenerNotValidAtLeast1Valid(),
+				Conditions: conditions.NewGatewayAcceptedListenerNotValidAtLeast1Valid("Some listeners are Conflicting"),
 			}
 		}
 	} else {
@@ -344,7 +344,7 @@ func (g *Gateway) BuildConditions() {
 		if invalid == total {
 			g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedListenersNotValid("All listeners have unsupported protocols"))
 		} else {
-			g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedListenersNotValidAtLeastOneValid("Some listeners have unsupported protocols"))
+			g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedListenerNotValidAtLeast1Valid("Some listeners have unsupported protocols"))
 		}
 	} else {
 		g.Conditions.MergeOverrideConditions(conditions.NewGatewayAcceptedOK())

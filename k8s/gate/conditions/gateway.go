@@ -81,24 +81,13 @@ func NewGatewayAcceptedListenersNotValid(msg string) generic.Conditions {
 	}
 }
 
-func NewGatewayAcceptedListenersNotValidAtLeastOneValid(msg string) generic.Conditions {
+func NewGatewayAcceptedListenerNotValidAtLeast1Valid(msg string) generic.Conditions {
 	return generic.Conditions{
 		generic.ConditionType(gatewayv1.GatewayConditionAccepted): {
 			Type:    generic.ConditionType(gatewayv1.GatewayConditionAccepted),
 			Status:  metav1.ConditionTrue,
 			Reason:  string(gatewayv1.GatewayReasonListenersNotValid),
 			Message: msg,
-		},
-	}
-}
-
-func NewGatewayAcceptedListenerNotValidAtLeast1Valid() generic.Conditions {
-	return generic.Conditions{
-		generic.ConditionType(gatewayv1.GatewayConditionAccepted): {
-			Type:    generic.ConditionType(gatewayv1.GatewayConditionAccepted),
-			Status:  metav1.ConditionTrue,
-			Reason:  string(gatewayv1.GatewayReasonListenersNotValid),
-			Message: "Some listeners are Conflicting",
 		},
 	}
 }
