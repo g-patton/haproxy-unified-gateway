@@ -32,24 +32,9 @@ tasks:
         vars:
           TOOL: '{{.ITEM}}'
 
-  # check-go-tool cannot install staticcheck here: the tools/go.mod module
-  # pins x/tools at v0.50.0, which reads Go 1.27 export data; the upstream
-  # release pins v0.44.1, which does not.
-  install-staticcheck:
-    desc: 'install staticcheck via tools/go.mod and print its path'
-    silent: true
-    dir: tools
-    cmds:
-      - |
-        go install honnef.co/go/tools/cmd/staticcheck
-        BIN="$(go env GOBIN)"
-        if [ -z "$BIN" ]; then BIN="$(go env GOPATH)/bin"; fi
-        echo "$BIN/staticcheck"
-
   tools-install:
     cmds:
       - task: check-go-tools
         vars:
-          TOOLS: [YQ, KIND, CLOUD_PROVIDER_KIND, CONTROLLER_GEN, CHECK_COMMIT, BETTERALIGN, GO_LICENSES, GOVULNCHECK, GOFUMPT, REVIVE, GOTESTSUM]
-      - task: install-staticcheck
+          TOOLS: [YQ, KIND, CLOUD_PROVIDER_KIND, CONTROLLER_GEN, CHECK_COMMIT, BETTERALIGN, STATICCHECK, GO_LICENSES, GOVULNCHECK, GOFUMPT, REVIVE, GOTESTSUM]
       - task: check-kubectl
