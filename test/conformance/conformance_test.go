@@ -66,6 +66,27 @@ func envOrDefault(key, fallback string) string {
 	return fallback
 }
 
+// implementationFromEnv builds the report's implementation block. The version is
+// environment-driven so a released tag can be reported honestly without editing
+// this file; the remaining fields are fixed per release.
+func implementationFromEnv() confv1.Implementation {
+	return confv1.Implementation{
+		Organization: "HAProxy Technologies",
+		Project:      "haproxy-unified-gateway",
+		URL:          "https://github.com/haproxytech/haproxy-unified-gateway",
+		Version:      envOrDefault("HUG_IMPLEMENTATION_VERSION", "dev"),
+		Contact:      []string{"https://github.com/haproxytech/haproxy-unified-gateway/issues"},
+	}
+}
+
+// controllerImageFromEnv returns the HUG image the per-Gateway controllers run.
+// For a release report this is the published image for that tag, so the report
+// describes exactly the artifact that shipped.
+func controllerImageFromEnv() string {
+	return fmt.Sprintf("haproxytech/haproxy-unified-gateway:%s",
+		envOrDefault("HUG_CONTROLLER_IMAGE_TAG", "latest"))
+}
+
 func TestConformance(t *testing.T) {
 	fmt.Fprintln(os.Stderr, "conformance: test starting")
 	log.SetLogger(zap.New(zap.WriteTo(os.Stderr), zap.UseDevMode(true)))
@@ -127,13 +148,7 @@ func TestConformance(t *testing.T) {
 		RestConfig:          cfg,
 		ManifestFS:          []fs.FS{&conformance.Manifests},
 	}
-	opts.Implementation = confv1.Implementation{
-		Organization: "haproxytech",
-		Project:      "haproxy-unified-gateway",
-		URL:          "https://github.com/haproxytech/haproxy-unified-gateway",
-		Version:      "dev",
-		Contact:      []string{"https://github.com/haproxytech/haproxy-unified-gateway/issues"},
-	}
+	opts.Implementation = implementationFromEnv()
 	opts.GatewayClassName = gwClassName
 	opts.Debug = showDebug
 	// Upstream default: test manifests are deleted after each test. Without
@@ -165,7 +180,7 @@ func TestConformance(t *testing.T) {
 
 	deployerDone, restoreDone, err := deployer.Start(ctx, cfg, deployer.Config{
 		DeployerNs:       "haproxy-unified-gateway",
-		ControllerImage:  "haproxytech/haproxy-unified-gateway:latest",
+		ControllerImage:  controllerImageFromEnv(),
 		HugConfCRD:       "haproxy-unified-gateway/hugconf",
 		GatewayClassName: gwClassName,
 		WatchNamespaces:  []string{"gateway-conformance-infra", "haproxy-unified-gateway"},

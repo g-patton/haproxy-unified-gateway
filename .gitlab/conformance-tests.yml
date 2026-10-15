@@ -1,3 +1,29 @@
+# Skip list shared by every conformance job that runs against the cluster, so
+# the publish job reports the same suite the CI jobs run.
+#
+# HTTPRouteMatching is skipped for its path-element prefix assertions (request
+# /v2example must not match prefix /v2): prefix routing matches by characters
+# today, a documented divergence pending its own fix. Its header-matching
+# assertions are covered by the four enabled match suites.
+#
+# Skipping is permitted upstream. This is the repo's list, under the canonical
+# name. A pipeline run overrides it with HUG_CONFORMANCE_SKIP_TESTS, which is a
+# different name on purpose: the two never collide, so the override cannot be
+# shadowed by a job-level variable whatever GitLab's precedence rules are.
+.hug-conformance-skip-tests:
+  variables:
+    CONFORMANCE_SKIP_TESTS: &hug_conf_skip "\
+      HTTPRouteInvalidBackendRefUnknownKind,\
+      HTTPRouteInvalidCrossNamespaceBackendRef,\
+      HTTPRouteInvalidNonExistentBackendRef,\
+      HTTPRouteMatching,\
+      HTTPRouteRedirectHostAndStatus,\
+      HTTPRouteRedirectPortAndScheme,\
+      HTTPRouteServiceTypes,\
+      HTTPRouteInvalidReferenceGrant,\
+      HTTPRoutePartiallyInvalidViaInvalidReferenceGrant,\
+      HTTPRouteReferenceGrant"
+
 conformance-GW-API-1_6_3:
   allow_failure: true
   stage: conformance-tests
@@ -18,9 +44,9 @@ conformance-GW-API-1_6_3:
     DOCKER_INSECURE_NO_IPTABLES_RAW: "1"
     GWAPI_VERSION: "1.6.3"
     CLUSTER_NAME: "conformance-1-6-3"
-    CONFORMANCE_REPORT_OUTPUT: "${CI_PROJECT_DIR}/conformance-report-1.6.3.yaml"
-    CONFORMANCE_JUNIT_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.6.3.xml"
-    CONFORMANCE_JUNIT_HTML_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.6.3.html"
+    CONFORMANCE_REPORT_OUTPUT: "${CI_PROJECT_DIR}/conformance-report-${GWAPI_VERSION}.yaml"
+    CONFORMANCE_JUNIT_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-${GWAPI_VERSION}.xml"
+    CONFORMANCE_JUNIT_HTML_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-${GWAPI_VERSION}.html"
     HUG_SERVICE_TYPE: "ClusterIP"
   before_script:
     - export PATH=$PATH:/root/go/bin
@@ -41,11 +67,11 @@ conformance-GW-API-1_6_3:
   artifacts:
     when: always
     paths:
-      - conformance-report-1.6.3.yaml
-      - conformance-junit-1.6.3.xml
-      - conformance-junit-1.6.3.html
+      - conformance-report-${GWAPI_VERSION}.yaml
+      - conformance-junit-${GWAPI_VERSION}.xml
+      - conformance-junit-${GWAPI_VERSION}.html
     reports:
-      junit: conformance-junit-1.6.3.xml
+      junit: conformance-junit-${GWAPI_VERSION}.xml
 
 conformance-MR-GW-API-1_6_3:
   allow_failure: false
@@ -66,9 +92,9 @@ conformance-MR-GW-API-1_6_3:
     DOCKER_INSECURE_NO_IPTABLES_RAW: "1"
     GWAPI_VERSION: "1.6.3"
     CLUSTER_NAME: "conformance-mr-1-6-3"
-    CONFORMANCE_REPORT_OUTPUT: "${CI_PROJECT_DIR}/conformance-report-1.6.3.yaml"
-    CONFORMANCE_JUNIT_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.6.3.xml"
-    CONFORMANCE_JUNIT_HTML_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-1.6.3.html"
+    CONFORMANCE_REPORT_OUTPUT: "${CI_PROJECT_DIR}/conformance-report-${GWAPI_VERSION}.yaml"
+    CONFORMANCE_JUNIT_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-${GWAPI_VERSION}.xml"
+    CONFORMANCE_JUNIT_HTML_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-${GWAPI_VERSION}.html"
     CONFORMANCE_RUN_TEST: ""
     HUG_SERVICE_TYPE: "ClusterIP"
     # Pod label selector for conformance-collect-debug-mr.
@@ -79,22 +105,9 @@ conformance-MR-GW-API-1_6_3:
     # Leave empty (default) to skip collection entirely.
     # Example: "run=hug-4ff08ccae6d535c8"  (sha derived from gateway ns/name)
     HUG_LABEL_COLLECT_LOGS: ""
-    CONFORMANCE_SKIP_TESTS: "\
-      HTTPRouteInvalidBackendRefUnknownKind,\
-      HTTPRouteInvalidCrossNamespaceBackendRef,\
-      HTTPRouteInvalidNonExistentBackendRef,\
-      HTTPRouteMatching,\
-      HTTPRouteRedirectHostAndStatus,\
-      HTTPRouteRedirectPortAndScheme,\
-      HTTPRouteServiceTypes,\
-      HTTPRouteInvalidReferenceGrant,\
-      HTTPRoutePartiallyInvalidViaInvalidReferenceGrant,\
-      HTTPRouteReferenceGrant"
-    # HTTPRouteMatching is skipped for its path-element prefix assertions
-    # (request /v2example must not match prefix /v2): prefix routing matches
-    # by characters today, a documented divergence pending its own fix.
-    # Its header-matching assertions are covered by the four enabled
-    # match suites.
+    # Same repo list, aliased from the anchor above so this job keeps its fixed
+    # list.
+    CONFORMANCE_SKIP_TESTS: *hug_conf_skip
   before_script:
     - export PATH=$PATH:/root/go/bin
     - docker login -u='$app' -p "$CI_REGISTRY_TOKEN" registry.haproxy.com
@@ -118,9 +131,89 @@ conformance-MR-GW-API-1_6_3:
   artifacts:
     when: always
     paths:
-      - conformance-report-1.6.3.yaml
-      - conformance-junit-1.6.3.xml
-      - conformance-junit-1.6.3.html
+      - conformance-report-${GWAPI_VERSION}.yaml
+      - conformance-junit-${GWAPI_VERSION}.xml
+      - conformance-junit-${GWAPI_VERSION}.html
       - debug-hug/
     reports:
-      junit: conformance-junit-1.6.3.xml
+      junit: conformance-junit-${GWAPI_VERSION}.xml
+
+# Publish a conformance report for a release, producing the files an upstream
+# kubernetes-sigs/gateway-api MR adds. One job, one input: the version.
+#
+#   - Tag pipelines run it automatically, with the version taken from the tag.
+#   - A manual pipeline run serves an already-released version: set
+#     HUG_IMPLEMENTATION_VERSION to e.g. v1.0.7.
+#
+# The version and the skip list are deliberately not given defaults here. The
+# version must come from the tag rule below or from whoever runs the pipeline;
+# the skip-list default lives in taskfile/conformance.yml and is passed
+# explicitly to each task, so a value supplied to the pipeline is used as-is.
+#
+# This job does NOT build the controller image: it pulls
+# haproxytech/haproxy-unified-gateway:<tag-without-v> from Docker Hub, so the
+# bits under test are the published release artifact. On a tag pipeline that
+# creates an ordering dependency on .github/workflows/docker_auto_release.yml
+# having pushed that tag. With retry: 0 a pull that loses that race fails the
+# job loudly; re-run it once the image is published.
+conformance-publish:
+  allow_failure: false
+  stage: conformance
+  retry: 0
+  needs: []
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+      variables:
+        HUG_IMPLEMENTATION_VERSION: $CI_COMMIT_TAG
+    # Compared against a shape, not against emptiness. An undefined variable
+    # substitutes to the empty string, and a project variable whose value is
+    # itself a reference (e.g. $CI_COMMIT_TAG) is non-empty at pipeline creation
+    # but expands to empty inside the job - which includes the job and then fails
+    # its own guard. Requiring a tag shape can do neither, and rejects "1.0.7"
+    # (the report carries the leading v; only the image tag strips it).
+    - if: $HUG_IMPLEMENTATION_VERSION =~ /^v[0-9]+\.[0-9]+/
+  image: $HAPROXY_REGISTRY_GO/docker:$DOCKER_VERSION-go$GO_VERSION
+  services:
+    - name: $HAPROXY_REGISTRY_GO/docker:$DOCKER_VERSION-dind
+      alias: docker
+  tags:
+    - go
+  variables:
+    # Runner kernels lack ip6table_raw; docker 29 needs it for IPv6 endpoints.
+    DOCKER_INSECURE_NO_IPTABLES_RAW: "1"
+    GWAPI_VERSION: "1.6.3"
+    CLUSTER_NAME: "conformance-publish"
+    # The repo's skip list, aliased from the anchor above. To deviate for one
+    # run, set HUG_CONFORMANCE_SKIP_TESTS at pipeline-run time: a different
+    # name, so nothing declared here can shadow it.
+    CONFORMANCE_SKIP_TESTS: *hug_conf_skip
+    CONFORMANCE_REPORT_OUTPUT: "${CI_PROJECT_DIR}/conformance-report-${GWAPI_VERSION}.yaml"
+    CONFORMANCE_JUNIT_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-${GWAPI_VERSION}.xml"
+    CONFORMANCE_JUNIT_HTML_OUTPUT: "${CI_PROJECT_DIR}/conformance-junit-${GWAPI_VERSION}.html"
+    HUG_SERVICE_TYPE: "ClusterIP"
+  before_script:
+    - export PATH=$PATH:/root/go/bin
+    - docker login -u='$app' -p "$CI_REGISTRY_TOKEN" registry.haproxy.com
+    - docker pull -q $HAPROXY_REGISTRY_GO/alpine:3
+    - docker image tag $HAPROXY_REGISTRY_GO/alpine:3 alpine:3
+    - docker pull -q $HAPROXY_REGISTRY_GO/golang:$GO_VERSION-alpine
+    - docker image tag $HAPROXY_REGISTRY_GO/golang:$GO_VERSION-alpine golang:$GO_VERSION-alpine
+    - sed -i "s~FROM golang~FROM $HAPROXY_REGISTRY_GO/golang~g" "build/Dockerfile"
+    - sed -i "s~FROM haproxytech/haproxy-alpine~FROM $HAPROXY_REGISTRY_GO/haproxy-alpine~g" "build/Dockerfile"
+  script:
+    - task conformance-publish-ci
+    # Consumes the publish/ artifacts the line above just produced, and pushes the
+    # payload as a commit to a dev-v<major.minor> branch on the haproxyci/gateway-api
+    # fork (dev-v1.0 for HUG_IMPLEMENTATION_VERSION=v1.0.7), not its main. It needs
+    # the deploy key in HAPROXY_CI_GWAPI_PRIVATE_KEY (a masked CI variable holding
+    # the path to the key, which the job chmods and ssh-adds). Set
+    # HUG_GITHUB_DRY_RUN=1 at pipeline-run time to rehearse up to the commit and
+    # not push.
+    - task conformance-publish-github
+  after_script:
+    - task kind-delete
+  artifacts:
+    when: always
+    paths:
+      - publish/
+      - conformance-report-${GWAPI_VERSION}.yaml
