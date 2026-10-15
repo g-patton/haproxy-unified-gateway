@@ -1,0 +1,18 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-echo-named
+spec:
+  parentRefs:
+  - name: hug-gateway
+    sectionName: http
+  hostnames:
+  - "named.haproxy"
+  rules:
+  - matches:
+    - path:
+        type: Exact
+        value: /api/
+    backendRefs:
+    - name: http-echo-named
+      port: 80

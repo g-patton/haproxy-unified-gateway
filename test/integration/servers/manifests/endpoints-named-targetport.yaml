@@ -1,0 +1,18 @@
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: http-echo-named
+  labels:
+    kubernetes.io/service-name: http-echo-named
+addressType: IPv4
+endpoints:
+  - addresses:
+      - 10.0.0.1
+    conditions:
+      ready: true
+      serving: true
+      terminating: false
+ports:
+  - name: service
+    port: 8888
+    protocol: TCP

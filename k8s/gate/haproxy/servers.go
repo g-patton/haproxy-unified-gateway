@@ -31,7 +31,6 @@ import (
 	"github.com/haproxytech/haproxy-unified-gateway/k8s/gate/utils"
 
 	discoveryV1 "k8s.io/api/discovery/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -145,7 +144,8 @@ func (b *HaproxyConfMgrImpl) processEndpointSlices(ctx context.Context) error {
 // - svcKey is the Service object key
 // - be contains the backend name and the service port
 // - svcEndpoints contains the list of endpoint for this service (already organized as a map)
-// It will first match the service Port with the service TargetPort and use only the endpoints on this port (matching TargetRef)
+// It will first match the Service Port with the EndpointSlice port (by Service port name) and use the endpoints
+// of this port. The endpoint port number already holds the resolved targetPort.
 // It also consider the haproxy configuration: DisableIPv4 or DisableIPv6 to discard IPv4/IPv6 as required.
 func (b *HaproxyConfMgrImpl) getServersForBackend(svcKey client.ObjectKey, be BackendPort, svcEndpoints SvcEndpoints) (map[string]models.Server, error) {
 	servers := make(map[string]models.Server)
@@ -158,18 +158,22 @@ func (b *HaproxyConfMgrImpl) getServersForBackend(svcKey client.ObjectKey, be Ba
 		return nil, fmt.Errorf("could not retrieve the Service %s", svcKey.String())
 	}
 
-	// Find the TargetPort in the Service
-	var targetPort intstr.IntOrString
+	// Find the Service port referenced by the backend.
+	// Only its Name is needed: EndpointSlice port names are the Service port names
+	// (Service.ports[].name), not the targetPort names.
+	var svcPortName string
+	svcPortFound := false
 	for _, port := range svc.Spec.Ports {
 		// Match the Service's published port number
 		if port.Port == bePort {
-			targetPort = port.TargetPort
+			svcPortName = port.Name
+			svcPortFound = true
 			break
 		}
 	}
 
-	if targetPort.String() == "" || targetPort.String() == "<nil>" {
-		return nil, fmt.Errorf("no TargetPort found on Service %s matching Port %d", svcKey.String(), bePort)
+	if !svcPortFound {
+		return nil, fmt.Errorf("no Port found on Service %s matching Port %d", svcKey.String(), bePort)
 	}
 
 	for addressType, endpointsForAddressType := range svcEndpoints {
@@ -184,29 +188,21 @@ func (b *HaproxyConfMgrImpl) getServersForBackend(svcKey client.ObjectKey, be Ba
 			}
 		}
 
-		// Check if the targetPort is part of endpoint ports
+		// Find the endpoint port matching the Service port we route to.
+		// The endpoint port number is the targetPort resolved by Kubernetes.
 		foundPort := false
 		var serverPort int32
 		for _, epPort := range endpointsForAddressType.ports {
-			switch targetPort.Type {
-			case intstr.Int:
-				targetPortInt := targetPort.IntVal
-				if epPort.Port != nil && targetPortInt == *epPort.Port {
-					foundPort = true
-					serverPort = *epPort.Port
-				}
-			case intstr.String:
-				targetPortStr := targetPort.String()
-				if epPort.Name != nil && targetPortStr == *epPort.Name {
-					foundPort = true
-					if epPort.Port != nil {
-						serverPort = *epPort.Port
-					}
-				}
+			epPortName := ""
+			if epPort.Name != nil {
+				epPortName = *epPort.Name
 			}
-			if foundPort {
-				break
+			if epPortName != svcPortName || epPort.Port == nil {
+				continue
 			}
+			foundPort = true
+			serverPort = *epPort.Port
+			break
 		}
 
 		if !foundPort {
