@@ -28,13 +28,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func strPtr(s string) *string { return &s }
+func newTestServersMgr(namespace, name string, ports []corev1.ServicePort) *HaproxyConfMgrImpl {
+	svc := &corev1.Service{}
+	svc.Namespace, svc.Name = namespace, name
+	svc.Spec.Ports = ports
 
-func ptrProto(p corev1.Protocol) *corev1.Protocol { return &p }
-
-func ptrInt32(v int32) *int32 { return &v }
-
-func newTestServersMgr(svc *corev1.Service) *HaproxyConfMgrImpl {
 	return &HaproxyConfMgrImpl{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		params: HaproxyConfMgrParams{
@@ -45,18 +43,16 @@ func newTestServersMgr(svc *corev1.Service) *HaproxyConfMgrImpl {
 		controllerStore: &tree.ControllerStore{
 			ClusterStore: &store.ClusterStore{
 				Services: map[client.ObjectKey]*corev1.Service{
-					{Namespace: svc.Namespace, Name: svc.Name}: svc,
+					{Namespace: namespace, Name: name}: svc,
 				},
 			},
 		},
 	}
 }
 
-func testSvcNamespace() (client.ObjectKey, string, string) {
-	return client.ObjectKey{Namespace: "monitoring", Name: "vm-stack-grafana"}, "monitoring", "vm-stack-grafana"
-}
-
 func TestGetServersForBackendNamedTargetPort(t *testing.T) {
+	svcKey := client.ObjectKey{Namespace: "monitoring", Name: "vm-stack-grafana"}
+
 	tests := []struct {
 		name             string
 		svcPorts         []corev1.ServicePort
@@ -73,7 +69,7 @@ func TestGetServersForBackendNamedTargetPort(t *testing.T) {
 				{Name: "service", Port: 80, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromString("grafana")},
 			},
 			epsPorts: []discoveryV1.EndpointPort{
-				{Name: strPtr("service"), Protocol: ptrProto(corev1.ProtocolTCP), Port: ptrInt32(3000)},
+				{Name: new("service"), Protocol: new(corev1.ProtocolTCP), Port: new(int32(3000))},
 			},
 			bePort:           80,
 			expectedAddrPort: "10.42.27.226:3000",
@@ -84,7 +80,7 @@ func TestGetServersForBackendNamedTargetPort(t *testing.T) {
 				{Name: "http", Port: 80, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromString("http")},
 			},
 			epsPorts: []discoveryV1.EndpointPort{
-				{Name: strPtr("http"), Protocol: ptrProto(corev1.ProtocolTCP), Port: ptrInt32(8080)},
+				{Name: new("http"), Protocol: new(corev1.ProtocolTCP), Port: new(int32(8080))},
 			},
 			bePort:           80,
 			expectedAddrPort: "10.42.27.226:8080",
@@ -95,7 +91,7 @@ func TestGetServersForBackendNamedTargetPort(t *testing.T) {
 				{Name: "http", Port: 8080, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromInt32(8080)},
 			},
 			epsPorts: []discoveryV1.EndpointPort{
-				{Name: strPtr("http"), Protocol: ptrProto(corev1.ProtocolTCP), Port: ptrInt32(8080)},
+				{Name: new("http"), Protocol: new(corev1.ProtocolTCP), Port: new(int32(8080))},
 			},
 			bePort:           8080,
 			expectedAddrPort: "10.42.27.226:8080",
@@ -106,7 +102,7 @@ func TestGetServersForBackendNamedTargetPort(t *testing.T) {
 				{Port: 80, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromInt32(3000)},
 			},
 			epsPorts: []discoveryV1.EndpointPort{
-				{Protocol: ptrProto(corev1.ProtocolTCP), Port: ptrInt32(3000)},
+				{Protocol: new(corev1.ProtocolTCP), Port: new(int32(3000))},
 			},
 			bePort:           80,
 			expectedAddrPort: "10.42.27.226:3000",
@@ -118,8 +114,8 @@ func TestGetServersForBackendNamedTargetPort(t *testing.T) {
 				{Name: "service", Port: 80, Protocol: corev1.ProtocolTCP, TargetPort: intstr.FromString("grafana")},
 			},
 			epsPorts: []discoveryV1.EndpointPort{
-				{Name: strPtr("metrics"), Protocol: ptrProto(corev1.ProtocolTCP), Port: ptrInt32(8080)},
-				{Name: strPtr("service"), Protocol: ptrProto(corev1.ProtocolTCP), Port: ptrInt32(3000)},
+				{Name: new("metrics"), Protocol: new(corev1.ProtocolTCP), Port: new(int32(8080))},
+				{Name: new("service"), Protocol: new(corev1.ProtocolTCP), Port: new(int32(3000))},
 			},
 			bePort:           80,
 			expectedAddrPort: "10.42.27.226:3000",
@@ -128,12 +124,7 @@ func TestGetServersForBackendNamedTargetPort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svcKey, ns, name := testSvcNamespace()
-			svc := &corev1.Service{}
-			svc.Namespace, svc.Name = ns, name
-			svc.Spec.Ports = tt.svcPorts
-
-			mgr := newTestServersMgr(svc)
+			mgr := newTestServersMgr(svcKey.Namespace, svcKey.Name, tt.svcPorts)
 
 			svcEndpoints := SvcEndpoints{
 				discoveryV1.AddressTypeIPv4: {
