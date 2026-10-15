@@ -65,7 +65,7 @@ tasks:
       - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/hug/global.yaml
       - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/hug-conformance-ci/controller.yaml
       # Wait for controller
-      - /{{.kubectl}} wait --for=condition=ready --timeout=120s pod -l run=haproxy-unified-gateway -n haproxy-unified-gateway
+      - /{{.kubectl}} wait --for=create --for=condition=ready --timeout=120s pod -l run=haproxy-unified-gateway -n haproxy-unified-gateway
       # Create GatewayClass for conformance
       - /{{.kubectl}} apply -f test/conformance/manifests/gatewayclass.yaml
       - echo "HUG deployed. Ready for conformance tests."
@@ -97,8 +97,8 @@ tasks:
     cmds:
       - /{{.kubectl}} apply -f https://raw.githubusercontent.com/metallb/metallb/{{.METALLB_VERSION}}/config/manifests/metallb-native.yaml
       - /{{.kubectl}} wait --for=condition=established --timeout=60s crd/ipaddresspools.metallb.io crd/l2advertisements.metallb.io
-      - /{{.kubectl}} wait --for=condition=ready --timeout=120s pod -l app=metallb,component=controller -n metallb-system
-      - /{{.kubectl}} wait --for=condition=ready --timeout=120s pod -l app=metallb,component=speaker -n metallb-system
+      - /{{.kubectl}} wait --for=create --for=condition=ready --timeout=120s pod -l app=metallb,component=controller -n metallb-system
+      - /{{.kubectl}} wait --for=create --for=condition=ready --timeout=120s pod -l app=metallb,component=speaker -n metallb-system
       - |
         SUBNET=$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+' | head -n 1)
         PREFIX=$(echo ${SUBNET} | cut -d. -f1-2)
