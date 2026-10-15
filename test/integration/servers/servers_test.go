@@ -110,3 +110,30 @@ func (s *ServersSuite) Test_Scale_up() {
 	// -------------------------------------
 	s.ConsistentlyNoReload(oldPid, 4*time.Second)
 }
+
+// Test_NamedTargetPort checks that a Service whose targetPort name differs from
+// its port name gets its endpoints in the backend. The EndpointSlice port name is
+// the Service port name ("service"), while the targetPort refers to the container
+// port name ("http").
+func (s *ServersSuite) Test_NamedTargetPort() {
+	fixtureDirPath := utils.GetCRDFixturePath()
+
+	manifests := []string{
+		"gateway.yaml",
+		"gatewayclass.yaml",
+		"offload-secret.yaml",
+		"service-named-targetport.yaml",
+		"endpoints-named-targetport.yaml",
+		"route-named-targetport.yaml",
+	}
+	s.CreateFixtures(fixtureDirPath, manifests)
+	defer s.CleanupFixtures(fixtureDirPath, manifests)
+
+	// The EndpointSlice port is the resolved targetPort (container port 8888),
+	// not the Service port (80).
+	backend := fmt.Sprintf("hug_%s_http-echo-named_80__", s.Test().Namespace)
+	expectedServers := []string{
+		"SRV_4827409c6115096b8dde5db0092cea2f54213123",
+	}
+	s.ExpectServers(backend, expectedServers)
+}
