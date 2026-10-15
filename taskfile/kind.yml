@@ -176,7 +176,7 @@ tasks:
       - /{{.kubectl}} apply -n example -f {{.DEV_INIT_DIR}}/gateway.yaml
       - /{{.kubectl}} apply -n example -f {{.DEV_INIT_DIR}}/route.yaml
       - task: delimiter
-      - /{{.kubectl}} wait --for=condition=ready --timeout=10s pod -l run=haproxy-unified-gateway -n haproxy-unified-gateway
+      - /{{.kubectl}} wait --for=create --for=condition=ready --timeout=10s pod -l run=haproxy-unified-gateway -n haproxy-unified-gateway
 
   kind-deploy-hug:
     internal: true
@@ -212,4 +212,4 @@ tasks:
       - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/hug-dev/controller.yaml
       - task: delimiter
       - /{{.kubectl}} delete pods -l run=haproxy-unified-gateway -n haproxy-unified-gateway
-      - /{{.kubectl}} wait --for=condition=ready --timeout=10s pod -l run=haproxy-unified-gateway -n haproxy-unified-gateway
+      - /{{.kubectl}} wait --for=create --for=condition=ready --timeout=10s pod -l run=haproxy-unified-gateway -n haproxy-unified-gateway
