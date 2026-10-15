@@ -2,7 +2,8 @@
 
 This document describes the CI pipeline for Gateway API conformance testing used in the
 `conformance-MR-GW-API-1_5_0` job. It complements the standard conformance setup
-described in [conformance.md](conformance.md).
+described in [conformance.md](conformance.md). For publishing a release's report
+upstream, see [conformance-publish.md](conformance-publish.md).
 
 ---
 
