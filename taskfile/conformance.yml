@@ -10,6 +10,19 @@ tasks:
   ### -----------------
   ### Tasks for CI
   ### -----------------
+  conformance-prepare-controller-image:
+    internal: true
+    desc: "make the controller image for HUG_CONTROLLER_IMAGE_TAG available locally"
+    vars:
+      HUG_CONTROLLER_IMAGE_TAG: '{{default "latest" .HUG_CONTROLLER_IMAGE_TAG}}'
+    cmds:
+      - |
+        if [ "{{.HUG_CONTROLLER_IMAGE_TAG}}" = "latest" ]; then
+          echo "HUG_CONTROLLER_IMAGE_TAG=latest - using the locally built image"
+        else
+          docker pull haproxytech/haproxy-unified-gateway:{{.HUG_CONTROLLER_IMAGE_TAG}}
+        fi
+
   conformance-pull-images:
     desc: "pre-pull images required by conformance tests"
     cmds:
@@ -22,6 +35,9 @@ tasks:
       - task: check-kubectl
     vars:
       kubectl: "{{.TMP}}/kubectl/{{.KUBECTL_VERSION}}/kubectl"
+      # Forwarded to conformance-deploy-ci: task-local vars do not reach the
+      # tasks a task calls, so the image tag must be named at every level.
+      HUG_CONTROLLER_IMAGE_TAG: '{{default "latest" .HUG_CONTROLLER_IMAGE_TAG}}'
     cmds:
       - task: kind-create-cluster
         vars:
@@ -35,6 +51,8 @@ tasks:
         DOCKER_IP=$(getent hosts docker | awk '{ print $1 }')
         /{{.kubectl}} config set-cluster kind-{{.CLUSTER_NAME}} --server=https://${DOCKER_IP}:7443 --insecure-skip-tls-verify=true
       - task: conformance-deploy-ci
+        vars:
+          HUG_CONTROLLER_IMAGE_TAG: "{{.HUG_CONTROLLER_IMAGE_TAG}}"
       # Run the routing fix here
       - task: conformance-setup-routing-ci
 
@@ -46,24 +64,31 @@ tasks:
     vars:
       kubectl: "{{.TMP}}/kubectl/{{.KUBECTL_VERSION}}/kubectl"
       CLUSTER_NAME: '{{ default "dev-controller" .CLUSTER_NAME }}'
+      HUG_CONTROLLER_IMAGE_TAG: '{{default "latest" .HUG_CONTROLLER_IMAGE_TAG}}'
     cmds:
       # Load images into Kind (HUG + conformance test images)
-      - cmd: $(check-go-tool {{.KIND}}) load docker-image haproxytech/haproxy-unified-gateway:latest --name={{.CLUSTER_NAME}}
+      - cmd: $(check-go-tool {{.KIND}}) load docker-image haproxytech/haproxy-unified-gateway:{{.HUG_CONTROLLER_IMAGE_TAG}} --name={{.CLUSTER_NAME}}
       - cmd: $(check-go-tool {{.KIND}}) load docker-image {{.CONFORMANCE_ECHO_IMAGE}} --name={{.CLUSTER_NAME}}
       - cmd: $(check-go-tool {{.KIND}}) load docker-image {{.CONFORMANCE_COREDNS_IMAGE}} --name={{.CLUSTER_NAME}}
       # Create namespace
       - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/hug/namespace.yaml
       # Install CRDs
       - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/crd-update/rbac.yaml
-      - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/crd-update/job-gwapi.yaml
+      - |
+        sed -e "s|haproxytech/haproxy-unified-gateway:latest|haproxytech/haproxy-unified-gateway:{{.HUG_CONTROLLER_IMAGE_TAG}}|g" \
+          {{.CONFIG_DIR}}/crd-update/job-gwapi.yaml | /{{.kubectl}} apply -f -
       - /{{.kubectl}} wait --for=condition=complete --timeout=120s job/haproxy-unified-gateway-gwapi -n haproxy-unified-gateway
-      - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/crd-update/job-crd.yaml
+      - |
+        sed -e "s|haproxytech/haproxy-unified-gateway:latest|haproxytech/haproxy-unified-gateway:{{.HUG_CONTROLLER_IMAGE_TAG}}|g" \
+          {{.CONFIG_DIR}}/crd-update/job-crd.yaml | /{{.kubectl}} apply -f -
       - /{{.kubectl}} wait --for=condition=complete --timeout=120s job/haproxy-unified-gateway-crd -n haproxy-unified-gateway
       # Deploy controller
       - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/hug/rbac.yaml
       - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/hug/hugconf.yaml
       - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/hug/global.yaml
-      - /{{.kubectl}} apply -f {{.CONFIG_DIR}}/hug-conformance-ci/controller.yaml
+      - |
+        sed -e "s|haproxytech/haproxy-unified-gateway:latest|haproxytech/haproxy-unified-gateway:{{.HUG_CONTROLLER_IMAGE_TAG}}|g" \
+          {{.CONFIG_DIR}}/hug-conformance-ci/controller.yaml | /{{.kubectl}} apply -f -
       # Wait for controller
       - /{{.kubectl}} wait --for=condition=ready --timeout=120s pod -l run=haproxy-unified-gateway -n haproxy-unified-gateway
       # Create GatewayClass for conformance
@@ -143,6 +168,8 @@ tasks:
       CONFORMANCE_RUN_TEST: '{{default "" .CONFORMANCE_RUN_TEST}}'
       CONFORMANCE_SKIP_TESTS: '{{default "" .CONFORMANCE_SKIP_TESTS}}'
       HUG_SERVICE_TYPE: '{{default "ClusterIP" .HUG_SERVICE_TYPE}}'
+      HUG_IMPLEMENTATION_VERSION: '{{default "" .HUG_IMPLEMENTATION_VERSION}}'
+      HUG_CONTROLLER_IMAGE_TAG: '{{default "latest" .HUG_CONTROLLER_IMAGE_TAG}}'
     cmds:
       - |
         # 1. Apply the job
@@ -150,6 +177,8 @@ tasks:
           -e "s|\${CONFORMANCE_RUN_TEST}|{{.CONFORMANCE_RUN_TEST}}|g" \
           -e "s|\${CONFORMANCE_SKIP_TESTS}|{{.CONFORMANCE_SKIP_TESTS}}|g" \
           -e "s|\${HUG_SERVICE_TYPE}|{{.HUG_SERVICE_TYPE}}|g" \
+          -e "s|\${HUG_IMPLEMENTATION_VERSION}|{{.HUG_IMPLEMENTATION_VERSION}}|g" \
+          -e "s|\${HUG_CONTROLLER_IMAGE_TAG}|{{.HUG_CONTROLLER_IMAGE_TAG}}|g" \
           example/deploy/hug-conformance-ci/conformance-job.yaml | /{{.kubectl}} apply -f -
 
         # 2. Wait for success OR failure (Timeout after 90m)
@@ -186,6 +215,242 @@ tasks:
         fi
 
         exit ${JOB_STATUS}
+
+  conformance-publish-ci:
+    desc: "run the suite for a release version and package the upstream conformance-report MR payload"
+    deps:
+      - task: check-kubectl
+    vars:
+      HUG_IMPLEMENTATION_VERSION: '{{.HUG_IMPLEMENTATION_VERSION}}'
+      HUG_CONTROLLER_IMAGE_TAG: '{{default (trimPrefix "v" .HUG_IMPLEMENTATION_VERSION) .HUG_CONTROLLER_IMAGE_TAG}}'
+      CONFORMANCE_REPORT_OUTPUT: '{{default "conformance-report.yaml" .CONFORMANCE_REPORT_OUTPUT}}'
+      # Skip list for the published run. Resolved here so the override never
+      # depends on GitLab's variable precedence: HUG_CONFORMANCE_SKIP_TESTS, set
+      # at pipeline-run time, wins; otherwise the repo's own
+      # CONFORMANCE_SKIP_TESTS (defined once in .gitlab/conformance-tests.yml) is
+      # used. The two names are distinct on purpose, so nothing shadows the
+      # override. With neither set the whole suite runs, which on an older tag
+      # means failures and nothing publishable.
+      CONFORMANCE_SKIP_TESTS: '{{default .CONFORMANCE_SKIP_TESTS .HUG_CONFORMANCE_SKIP_TESTS}}'
+      PUBLISH_DIR: '{{default "publish" .PUBLISH_DIR}}'
+    # Each call passes vars explicitly. A task's own `vars:` and `env:` reach that
+    # task's commands but NOT the tasks it calls — task-local vars do not leak
+    # transitively — so anything a sub-task needs must be named on its call, and
+    # forwarded again at every level below.
+    cmds:
+      - |
+        if [ -z "{{.HUG_IMPLEMENTATION_VERSION}}" ]; then
+          echo "HUG_IMPLEMENTATION_VERSION is required (e.g. v1.0.7)" >&2
+          exit 1
+        fi
+      - task: conformance-prepare-controller-image
+        vars:
+          HUG_CONTROLLER_IMAGE_TAG: '{{.HUG_CONTROLLER_IMAGE_TAG}}'
+      - task: conformance-create-ci
+        vars:
+          HUG_CONTROLLER_IMAGE_TAG: '{{.HUG_CONTROLLER_IMAGE_TAG}}'
+      - task: conformance-build-test-image
+      - task: conformance-run-job
+        vars:
+          HUG_IMPLEMENTATION_VERSION: '{{.HUG_IMPLEMENTATION_VERSION}}'
+          HUG_CONTROLLER_IMAGE_TAG: '{{.HUG_CONTROLLER_IMAGE_TAG}}'
+          CONFORMANCE_REPORT_OUTPUT: '{{.CONFORMANCE_REPORT_OUTPUT}}'
+          CONFORMANCE_SKIP_TESTS: '{{.CONFORMANCE_SKIP_TESTS}}'
+      - task: conformance-package
+        vars:
+          HUG_IMPLEMENTATION_VERSION: '{{.HUG_IMPLEMENTATION_VERSION}}'
+          HUG_CONTROLLER_IMAGE_TAG: '{{.HUG_CONTROLLER_IMAGE_TAG}}'
+          CONFORMANCE_REPORT_OUTPUT: '{{.CONFORMANCE_REPORT_OUTPUT}}'
+          CONFORMANCE_SKIP_TESTS: '{{.CONFORMANCE_SKIP_TESTS}}'
+          PUBLISH_DIR: '{{.PUBLISH_DIR}}'
+
+  conformance-package:
+    desc: "validate the report and build the upstream MR payload plus provenance"
+    vars:
+      HUG_IMPLEMENTATION_VERSION: '{{.HUG_IMPLEMENTATION_VERSION}}'
+      HUG_CONTROLLER_IMAGE_TAG: '{{default "latest" .HUG_CONTROLLER_IMAGE_TAG}}'
+      CONFORMANCE_REPORT_OUTPUT: '{{default "conformance-report.yaml" .CONFORMANCE_REPORT_OUTPUT}}'
+      CONFORMANCE_SKIP_TESTS: '{{default "" .CONFORMANCE_SKIP_TESTS}}'
+      PUBLISH_DIR: '{{default "publish" .PUBLISH_DIR}}'
+    cmds:
+      - go run ./cmd/conformance-publish --tag {{.HUG_IMPLEMENTATION_VERSION}} --report {{.CONFORMANCE_REPORT_OUTPUT}} --out {{.PUBLISH_DIR}}/upstream
+      - |
+        mkdir -p {{.PUBLISH_DIR}}
+        DIGEST=$(docker inspect haproxytech/haproxy-unified-gateway:{{.HUG_CONTROLLER_IMAGE_TAG}} 2>/dev/null \
+          | grep -oE 'haproxytech/haproxy-unified-gateway@sha256:[a-f0-9]+' | head -n1 || true)
+        {
+          echo "version={{.HUG_IMPLEMENTATION_VERSION}}"
+          echo "controller_image=haproxytech/haproxy-unified-gateway:{{.HUG_CONTROLLER_IMAGE_TAG}}"
+          echo "controller_image_digest=${DIGEST:-unavailable}"
+          echo "skip_tests={{.CONFORMANCE_SKIP_TESTS}}"
+          echo "gateway_api_version=$(grep -m1 '^gatewayAPIVersion:' {{.CONFORMANCE_REPORT_OUTPUT}} | awk '{print $2}')"
+          echo "commit=$(git rev-parse HEAD)"
+          echo "pipeline=${CI_PIPELINE_ID:-local}"
+          echo "job=${CI_JOB_ID:-local}"
+        } > {{.PUBLISH_DIR}}/provenance.txt
+        cat {{.PUBLISH_DIR}}/provenance.txt
+
+  conformance-publish-github:
+    desc: "push the upstream MR payload as a commit to a dev-v<major.minor> branch on haproxyci/gateway-api"
+    vars:
+      HUG_IMPLEMENTATION_VERSION: '{{.HUG_IMPLEMENTATION_VERSION}}'
+      PUBLISH_DIR: '{{default "publish" .PUBLISH_DIR}}'
+      # The fork is a User-owned mirror; it is reached over SSH with a deploy key.
+      GWAPI_FORK_REPO: '{{default "git@github.com:haproxyci/gateway-api.git" .GWAPI_FORK_REPO}}'
+      GWAPI_UPSTREAM_REPO: '{{default "https://github.com/kubernetes-sigs/gateway-api.git" .GWAPI_UPSTREAM_REPO}}'
+      GITHUB_BOT_NAME: '{{default "haproxyci" .GITHUB_BOT_NAME}}'
+      GITHUB_BOT_EMAIL: '{{default "haproxyci@haproxy.com" .GITHUB_BOT_EMAIL}}'
+    # Everything runs in one shell: ssh-agent's environment (SSH_AUTH_SOCK) is
+    # established by `eval` here, and neither an export nor an ssh-agent survives
+    # a command boundary in this runner.
+    cmds:
+      - |
+        set -euo pipefail
+
+        if [ -z "{{.HUG_IMPLEMENTATION_VERSION}}" ]; then
+          echo "HUG_IMPLEMENTATION_VERSION is required (e.g. v1.0.7)" >&2
+          exit 1
+        fi
+
+        # The report lands on a per-minor staging branch on the fork,
+        # dev-v<major.minor>, derived from the implementation version
+        # (v1.0.7 -> dev-v1.0). Never the fork's main: main stays a plain mirror
+        # of upstream, and each minor line gets its own branch.
+        BRANCH="dev-$(printf '%s' "{{.HUG_IMPLEMENTATION_VERSION}}" | grep -oE '^v[0-9]+\.[0-9]+' || true)"
+        if [ "$BRANCH" = "dev-" ]; then
+          echo "HUG_IMPLEMENTATION_VERSION must be v<major>.<minor>.<patch> (e.g. v1.0.7); got '{{.HUG_IMPLEMENTATION_VERSION}}'" >&2
+          exit 1
+        fi
+        echo "target branch: ${BRANCH}"
+
+        PAYLOAD="$(cd "{{.PUBLISH_DIR}}/upstream" && pwd)"
+        REPORT=$(find "$PAYLOAD/conformance/reports" -name "*-{{.HUG_IMPLEMENTATION_VERSION}}-*-report.yaml" -print -quit)
+        if [ -z "$REPORT" ]; then
+          echo "no report for {{.HUG_IMPLEMENTATION_VERSION}} under $PAYLOAD; run conformance-publish-ci first" >&2
+          exit 1
+        fi
+
+        # Both fields are read from the report so the message cannot drift from
+        # what was actually published. The convention, per upstream's own report
+        # commits, is "<project> <gateway API version> conformance report".
+        PROJECT=$(grep -m1 '^  project:' "$REPORT" | awk '{print $2}')
+        GW_VERSION=$(grep -m1 '^gatewayAPIVersion:' "$REPORT" | awk '{print $2}')
+        if [ -z "$PROJECT" ] || [ -z "$GW_VERSION" ]; then
+          echo "could not read implementation.project / gatewayAPIVersion from $REPORT" >&2
+          exit 1
+        fi
+        MESSAGE="Update ${PROJECT} ${GW_VERSION} conformance report"
+        echo "commit message: ${MESSAGE}"
+
+        # The payload's implementation folder, and the same path relative to the
+        # checkout root. Everything below stays inside this folder.
+        SRC_FOLDER=$(dirname "$REPORT")
+        REL_FOLDER="conformance/reports/$(basename "$(dirname "$SRC_FOLDER")")/$(basename "$SRC_FOLDER")"
+
+        # We keep a single version per implementation, so the table must have
+        # exactly one row. A freshly rendered README has one; a stale one spliced
+        # from a leftover output directory can have more, so refuse rather than
+        # commit a second row.
+        ROWS=$(grep -c '/releases/tag/' "$PAYLOAD/$REL_FOLDER/README.md" || true)
+        if [ "$ROWS" -ne 1 ]; then
+          echo "README table must have exactly one row, found $ROWS: $PAYLOAD/$REL_FOLDER/README.md" >&2
+          exit 1
+        fi
+
+        if [ -z "${HAPROXY_CI_GWAPI_PRIVATE_KEY:-}" ]; then
+          echo "HAPROXY_CI_GWAPI_PRIVATE_KEY must hold the path to the deploy key file" >&2
+          exit 1
+        fi
+        # GitLab strips the trailing newline off a variable's value, and an
+        # OpenSSH/PEM key needs it: ssh-add reports the missing newline with the
+        # same opaque "error in libcrypto" as a corrupt key. Restore it, so the
+        # only key that reaches ssh-add is a well-formed one. The append is a
+        # no-op on a value that already ends in a newline.
+        if [ -n "$(tail -c1 "$HAPROXY_CI_GWAPI_PRIVATE_KEY")" ]; then
+          printf '\n' >> "$HAPROXY_CI_GWAPI_PRIVATE_KEY"
+        fi
+        # The variable is a File-type CI/CD variable, so its value is the path to
+        # a temp file holding the key. Guard the file, not just the variable: the
+        # path is non-empty even when the file is empty. And ssh-add answers a
+        # bare "error in libcrypto" for an empty file, for a key whose newlines
+        # were stripped, and for one with CRLF alike - so verify here, and say
+        # what was actually found, rather than leaving that opaque failure.
+        chmod 600 "$HAPROXY_CI_GWAPI_PRIVATE_KEY"
+        KEY_BYTES=$(wc -c < "$HAPROXY_CI_GWAPI_PRIVATE_KEY")
+        KEY_LINES=$(wc -l < "$HAPROXY_CI_GWAPI_PRIVATE_KEY")
+        echo "deploy key file: ${KEY_BYTES} bytes, ${KEY_LINES} lines"
+        if [ "$KEY_BYTES" -eq 0 ]; then
+          echo "HAPROXY_CI_GWAPI_PRIVATE_KEY points at an empty file" >&2
+          exit 1
+        fi
+        if command -v ssh-keygen >/dev/null 2>&1 \
+           && ! ssh-keygen -y -P '' -f "$HAPROXY_CI_GWAPI_PRIVATE_KEY" >/dev/null 2>&1; then
+          echo "deploy key file is not a usable private key (${KEY_BYTES} bytes, ${KEY_LINES} lines)." >&2
+          echo "A raw key must keep its line breaks - the current key is 8 lines. Fewer means the value was pasted mangled." >&2
+          exit 1
+        fi
+        eval "$(ssh-agent -s)"
+        ssh-add "$HAPROXY_CI_GWAPI_PRIVATE_KEY"
+        # The job is non-interactive, so it cannot answer a host-key prompt; trust
+        # github.com up front or the first clone fails verification.
+        mkdir -p ~/.ssh
+        ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+        WORK=$(mktemp -d)
+        # Not a shallow clone. We commit on top of upstream/main, and a shallow
+        # history would make the push a "shallow update", which the receiving side
+        # refuses (receive.shallowUpdate is false on GitHub, as on any bare repo):
+        # the fork rejects it with "shallow update not allowed". The full history
+        # has to be here for the push to carry it.
+        git clone "{{.GWAPI_FORK_REPO}}" "$WORK/gateway-api"
+        cd "$WORK/gateway-api"
+        git config user.name "{{.GITHUB_BOT_NAME}}"
+        git config user.email "{{.GITHUB_BOT_EMAIL}}"
+
+        # Base the commit on upstream, not on the fork's branch: the fork's branch
+        # may be behind, and committing on top of it would put unrelated upstream
+        # drift into the MR diff. The branch becomes upstream/main + exactly our
+        # commit.
+        git remote add upstream "{{.GWAPI_UPSTREAM_REPO}}"
+        git fetch upstream main
+        git checkout -B "$BRANCH" upstream/main
+
+        # Keep exactly one published version per implementation: drop whatever
+        # reports are already in this folder on the checkout, then lay down the
+        # payload's single report and README. Deletion and addition land in the
+        # same commit, so the folder never holds two versions. Only upstream is
+        # consulted: the checkout was reset to upstream/main above, so anything the
+        # fork's branch carried was already discarded and cannot survive into the
+        # commit. A previous release is present here when its MR was merged; if it
+        # was not, there is simply nothing to delete.
+        rm -f "$REL_FOLDER"/*-report.yaml
+        cp -r "$PAYLOAD/conformance" .
+
+        # Post-condition, so "one version" holds by assertion and not only by the
+        # reasoning above: the folder about to be committed must hold exactly one
+        # yaml file - the report. Counting every *.yaml rather than *-report.yaml
+        # makes this broader than the delete above, so a file the delete would not
+        # have matched fails the run loudly instead of surviving unnoticed.
+        REMAINING=$(find "$REL_FOLDER" -maxdepth 1 -name '*.yaml' | wc -l)
+        if [ "$REMAINING" -ne 1 ]; then
+          echo "expected exactly one report in $REL_FOLDER, found $REMAINING:" >&2
+          find "$REL_FOLDER" -maxdepth 1 -name '*.yaml' >&2
+          exit 1
+        fi
+
+        git add -A conformance
+        git commit -s -m "${MESSAGE}"
+
+        if [ -n "${HUG_GITHUB_DRY_RUN:-}" ]; then
+          echo "HUG_GITHUB_DRY_RUN is set: stopping before the push. To be pushed:"
+          git show --stat --oneline HEAD
+          exit 0
+        fi
+
+        # The branch is rewritten onto upstream/main on every run, so the push is
+        # forced by design; --force-with-lease still refuses if the fork's branch
+        # moved since the clone, rather than clobbering a change we never saw.
+        git push --force-with-lease origin "$BRANCH"
 
   conformance-dump-controller-debug:
     desc: "dump default controller pods, logs and GatewayClass status for CI debugging"

@@ -42,6 +42,10 @@ spec:
           value: "${CONFORMANCE_SKIP_TESTS}"
         - name: HUG_SERVICE_TYPE
           value: "${HUG_SERVICE_TYPE}"
+        - name: HUG_IMPLEMENTATION_VERSION
+          value: "${HUG_IMPLEMENTATION_VERSION}"
+        - name: HUG_CONTROLLER_IMAGE_TAG
+          value: "${HUG_CONTROLLER_IMAGE_TAG}"
       volumes:
       - name: results
         hostPath:
