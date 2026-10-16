@@ -94,7 +94,6 @@ The conformance report is the artifact implementations submit to the upstream
 | `CONFORMANCE_SKIP_TESTS` | _(unset)_ | Comma-separated list of test shortnames to skip |
 | `CONFORMANCE_REPORT_OUTPUT` | `conformance-report.yaml` | Path for the conformance report |
 | `HUG_GATEWAY_CLASS` | `haproxy` | GatewayClass name used in tests |
-| `HUG_TEST_TLS` | _(unset)_ | Set to `1` to enable the GATEWAY-TLS profile |
 
 ---
 
@@ -103,7 +102,7 @@ The conformance report is the artifact implementations submit to the upstream
 | Profile | Status |
 |---|---|
 | `GATEWAY-HTTP` | Enabled by default |
-| `GATEWAY-TLS` | Opt-in via `HUG_TEST_TLS=1` |
+| `GATEWAY-TLS` | Enabled by default |
 
 ## Supported features declared
 
@@ -112,6 +111,7 @@ The test currently declares core features only:
 - `SupportGateway`
 - `SupportHTTPRoute`
 - `SupportReferenceGrant`
+- `SupportTLSRoute` (from the `GATEWAY-TLS` profile)
 
 Extended features (e.g. `HTTPRouteQueryParamMatching`, `HTTPRoutePathRewrite`)
 can be added to `test/conformance/conformance_test.go` as HUG gains support.

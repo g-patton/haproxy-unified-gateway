@@ -121,12 +121,8 @@ func TestConformance(t *testing.T) {
 
 	conformanceProfiles := sets.New(
 		suite.GatewayHTTPConformanceProfileName,
+		suite.GatewayTLSConformanceProfileName,
 	)
-
-	if os.Getenv("HUG_TEST_TLS") == "1" {
-		conformanceProfiles.Insert(suite.GatewayTLSConformanceProfileName)
-		supportedFeatures.Insert(features.SupportTLSRoute)
-	}
 
 	reportOutput := envOrDefault("CONFORMANCE_REPORT_OUTPUT", "conformance-report.yaml")
 
