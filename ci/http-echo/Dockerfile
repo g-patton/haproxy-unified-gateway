@@ -1,9 +1,12 @@
 FROM golang:1.27-alpine AS builder
+ENV GOTOOLCHAIN=auto
 
 COPY *.go /src/
 COPY go.mod /src/go.mod
+COPY go.sum /src/go.sum
+COPY go.sum /src/go.sum
 
-RUN cd /src && go build -buildvcs=true -o echo-http
+RUN cd /src && go build -o echo-http
 
 FROM alpine:3
 RUN apk --no-cache add openssl
