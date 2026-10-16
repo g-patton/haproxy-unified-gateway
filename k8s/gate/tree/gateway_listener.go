@@ -228,7 +228,7 @@ func (l *Listener) checkProtocol(gateSupportedRouteKinds map[gatewayv1.ProtocolT
 		)
 		l.CheckProtocol = CheckResult{
 			Valid:      false,
-			Conditions: conditions.NewListenerAcceptedUnsupportedProtocol(valErr.Error()),
+			Conditions: conditions.NewListenerAcceptedUnsupportedValue(valErr.Error()),
 		}
 		return
 	}

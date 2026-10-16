@@ -85,10 +85,19 @@ func newGatewayStatusPatcher(gw *tree.Gateway, addresses []gatewayv1.GatewayStat
 		// If the Gateway is invalid, the listeners status should be empty
 		for _, listener := range gw.Listeners {
 			conds := listener.Conditions.ToMetav1Conditions()
+			// A listener whose protocol is not supported supports no route kind,
+			// so supportedKinds stays empty (see conformance tests
+			// GatewayListenerUnsupportedProtocol and
+			// TLSRouteListenerTerminateNotSupported). Other rejections, such as
+			// a listener conflict, keep advertising their kinds.
+			kinds := listener.AllowedRouteKinds
+			if !listener.CheckProtocol.Valid {
+				kinds = nil
+			}
 			listenerStatuses = append(listenerStatuses, gatewayv1.ListenerStatus{
 				Name:           listener.K8sResource.Name,
 				Conditions:     conds,
-				SupportedKinds: listener.AllowedRouteKinds,
+				SupportedKinds: kinds,
 				AttachedRoutes: int32(len(listener.AttachedRoutes)), // To be changed with the correct value
 			})
 		}

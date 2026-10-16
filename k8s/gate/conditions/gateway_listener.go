@@ -131,6 +131,20 @@ func NewListenerAcceptedUnsupportedProtocol(msg string) generic.Conditions {
 	}
 }
 
+// NewListenerAcceptedUnsupportedValue sets Accepted=False with the
+// UnsupportedValue reason, for a listener whose protocol is supported but whose
+// value is not (e.g. a TLS listener asking for TLS mode Terminate).
+func NewListenerAcceptedUnsupportedValue(msg string) generic.Conditions {
+	return generic.Conditions{
+		generic.ConditionType(gatewayv1.ListenerConditionAccepted): {
+			Type:    generic.ConditionType(gatewayv1.ListenerConditionAccepted),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(gatewayv1.ListenerReasonUnsupportedValue),
+			Message: msg,
+		},
+	}
+}
+
 func NewListenerAcceptedOK() generic.Conditions {
 	return generic.Conditions{
 		generic.ConditionType(gatewayv1.ListenerConditionAccepted): {
