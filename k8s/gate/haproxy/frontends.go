@@ -735,6 +735,17 @@ func tlsPassthroughRules(
 			VarScope: "sess",
 			Expr:     "var(sess.selected_listener_route),map(" + sniMapPath + ")",
 		},
+		{
+			// tcp-request content reject if !{ var(sess.sni_match) -m found }
+			// No route matches this SNI, so the connection must be closed. Falling
+			// through to backend_not_found would answer the TLS client in
+			// cleartext, since that backend is an http one returning a 404 page.
+			Type:     "content",
+			Action:   "reject",
+			Cond:     "if",
+			CondTest: "!{ var(sess.sni_match) -m found }",
+			Metadata: map[string]any{"hug": "no route matches the SNI"},
+		},
 	}
 	backendSwitchingRules := []*models.BackendSwitchingRule{
 		{
