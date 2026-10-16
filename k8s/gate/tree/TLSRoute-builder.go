@@ -66,13 +66,16 @@ func (b *TLSRouteBuilderImpl) computeGateTreeUpdates() {
 		if tlsRoute.TreeStatus.Status != store.StatusUpserted {
 			continue
 		}
-		if tlsRoute.isManaged() {
+		if tlsRoute.hasValidParentRef() {
 			// Process Rules
 			b.buildRules(tlsRoute)
 		}
 
 		// Merge the backendRef conditions
 		tlsRoute.mergeBackendConditions()
+		// Stamp the generation once every condition has been merged, so the
+		// backendRef conditions carry it too.
+		tlsRoute.Conditions.SetGeneration(tlsRoute.K8sResource.Generation)
 	}
 }
 
@@ -99,7 +102,7 @@ func (b *TLSRouteBuilderImpl) computeTreeGatewayUpdate(gwKey client.ObjectKey, r
 
 		treeTLSRoute.processChecks(*b.ControllerStore)
 
-		if treeTLSRoute.isManaged() {
+		if treeTLSRoute.hasManagedParentRef() {
 			b.SetAsManaged(treeTLSRoute)
 		} else {
 			b.SetAsUnmanaged(treeTLSRoute)
@@ -126,8 +129,12 @@ func (b *TLSRouteBuilderImpl) computeTreeGatewayUpdate(gwKey client.ObjectKey, r
 	}
 }
 
-func (r *TLSRoute) isManaged() bool {
+func (r *TLSRoute) hasValidParentRef() bool {
 	return r.CheckParentRefs.Valid
+}
+
+func (r *TLSRoute) hasManagedParentRef() bool {
+	return r.CheckParentRefs.Managed
 }
 
 func (r *TLSRoute) ResetChecks() {

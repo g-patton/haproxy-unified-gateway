@@ -138,6 +138,8 @@ func (r *TLSRoute) checkParentRefs(controllerStore ControllerStore) {
 			continue
 		}
 
+		checkParentsRefs.Managed = true
+
 		// From now on, parentRef is a managed Gateway
 
 		// 1- The parentRef is not Valid
@@ -310,14 +312,14 @@ func (r *TLSRoute) isAllowedRouteKind(listener *Listener, extractGVK utilsk8s.Ex
 }
 
 func (r *TLSRoute) BuildConditions() {
-	if !r.isManaged() {
+	// We build conditions if parent ref is managed whatever the validity of the parent ref
+	if !r.hasManagedParentRef() {
 		return
 	}
 	r.Conditions = rc.RouteConditions{
 		ControllerName: r.ControllerName,
 		Conditions:     utils.NewKeyMap[gatewayv1.ParentReference, generic.Conditions](utils.ParentRefToKey),
 	}
-	r.Conditions.SetGeneration(r.K8sResource.Generation)
 
 	r.CheckParentRefs.Conditions.Conditions.Iterate(func(key string, parentRefConds generic.Conditions) bool {
 		parentRef, err := utils.KeyToParentRef(key)
@@ -327,6 +329,10 @@ func (r *TLSRoute) BuildConditions() {
 		r.Conditions.MergeOverrideConditionsForParentRef(parentRef, parentRefConds)
 		return true
 	})
+	// SetGeneration only stamps the conditions already present, so it must run
+	// after the merge, otherwise observedGeneration stays 0.
+	r.Conditions.SetGeneration(r.K8sResource.Generation)
+
 	// This needs to change when we implement more checks
 	r.Valid = r.CheckParentRefs.Valid
 }
