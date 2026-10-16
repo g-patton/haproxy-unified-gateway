@@ -715,10 +715,7 @@ func tlsPassthroughRules(
 			Expr:     "var(sess.selected_listener_route),map(" + sniMapPath + ")",
 		},
 		{
-			// tcp-request content reject if !{ var(sess.sni_match) -m found }
-			// No route matches this SNI, so the connection must be closed. Falling
-			// through to backend_not_found would answer the TLS client in
-			// cleartext, since that backend is an http one returning a 404 page.
+			// Reject unmatched SNI before the HTTP fallback can send a plaintext 404 to a TLS client.
 			Type:     "content",
 			Action:   "reject",
 			Cond:     "if",

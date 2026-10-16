@@ -1,5 +1,5 @@
 # Skip list shared by every conformance job that runs against the cluster, so
-# the publish job reports the same suite the CI jobs run. Two groups, for two
+# the publish job reports the same suite the CI jobs run. Three groups, for
 # different reasons:
 #
 #   - HTTPRouteHeaderMatching: header matching is not implemented on this line
@@ -9,6 +9,10 @@
 #     boundaries, so a request to /v2example matches the prefix /v2. The header
 #     part of HTTPRouteMatching passes; the path-element assertions do not. This
 #     is a documented divergence that predates this branch.
+#   - TLSRouteHostnameIntersection: v1.0 uses Gateway API v1.5, whose TLS
+#     rejection helper can spend the entire retry window on one stalled dial.
+#     Fixed upstream by https://github.com/kubernetes-sigs/gateway-api/pull/5110.
+#     Skip only on v1.0; dev uses v1.6 and includes the bounded-attempt fix.
 #
 # Skipping is permitted upstream. This is the repo's list, under the canonical
 # name. A pipeline run overrides it with HUG_CONFORMANCE_SKIP_TESTS, which is a
@@ -28,7 +32,8 @@
       HTTPRouteServiceTypes,\
       HTTPRouteInvalidReferenceGrant,\
       HTTPRoutePartiallyInvalidViaInvalidReferenceGrant,\
-      HTTPRouteReferenceGrant"
+      HTTPRouteReferenceGrant,\
+      TLSRouteHostnameIntersection"
 
 conformance-GW-API-1_5_0:
   allow_failure: true
