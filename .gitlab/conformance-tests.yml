@@ -76,6 +76,7 @@ conformance-GW-API-1_5_0:
       - conformance-report-${GWAPI_VERSION}.yaml
       - conformance-junit-${GWAPI_VERSION}.xml
       - conformance-junit-${GWAPI_VERSION}.html
+      - conformance-run.log
     reports:
       junit: conformance-junit-${GWAPI_VERSION}.xml
 
@@ -140,6 +141,7 @@ conformance-MR-GW-API-1_5_0:
       - conformance-report-${GWAPI_VERSION}.yaml
       - conformance-junit-${GWAPI_VERSION}.xml
       - conformance-junit-${GWAPI_VERSION}.html
+      - conformance-run.log
       - debug-hug/
     reports:
       junit: conformance-junit-${GWAPI_VERSION}.xml

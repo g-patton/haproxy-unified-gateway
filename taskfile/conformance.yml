@@ -167,6 +167,7 @@ tasks:
       CONFORMANCE_JUNIT_HTML_OUTPUT: '{{default "conformance-junit.html" .CONFORMANCE_JUNIT_HTML_OUTPUT}}'
       CONFORMANCE_RUN_TEST: '{{default "" .CONFORMANCE_RUN_TEST}}'
       CONFORMANCE_SKIP_TESTS: '{{default "" .CONFORMANCE_SKIP_TESTS}}'
+      CONFORMANCE_LOG_OUTPUT: '{{default "conformance-run.log" .CONFORMANCE_LOG_OUTPUT}}'
       HUG_SERVICE_TYPE: '{{default "ClusterIP" .HUG_SERVICE_TYPE}}'
       HUG_IMPLEMENTATION_VERSION: '{{default "" .HUG_IMPLEMENTATION_VERSION}}'
       HUG_CONTROLLER_IMAGE_TAG: '{{default "latest" .HUG_CONTROLLER_IMAGE_TAG}}'
@@ -185,19 +186,24 @@ tasks:
         echo "Waiting for conformance tests to finish (Success or Failure)..."
         timeout 90m bash -c 'until /{{.kubectl}} wait job/conformance-tests --for=condition=Complete --timeout=1s 2>/dev/null || /{{.kubectl}} wait job/conformance-tests --for=condition=Failed --timeout=1s 2>/dev/null; do sleep 5; done' || echo "Wait timed out"
 
-        # 3. CRITICAL: Add a small sleep to ensure hostPath is synced
+        # 3. Archive the test log while the pod still exists. The junit carries
+        # no subtest output, so without this a failed run cannot be told apart
+        # from a stalled client.
+        /{{.kubectl}} logs job/conformance-tests --all-containers --tail=-1 > "{{.CONFORMANCE_LOG_OUTPUT}}" 2>&1 || true
+
+        # 4. CRITICAL: Add a small sleep to ensure hostPath is synced
         sleep 5
 
-        # 4. Debug: Check if the file actually exists on the node before copying
+        # 5. Debug: Check if the file actually exists on the node before copying
         echo "Checking for results on Kind node..."
         docker exec {{.CLUSTER_NAME}}-control-plane ls -lh /tmp/conformance-results/
 
-        # 5. Extract reports from kind docker container
+        # 6. Extract reports from kind docker container
         echo "Streaming reports from Kind node..."
         docker exec {{.CLUSTER_NAME}}-control-plane cat /tmp/conformance-results/junit.xml > {{.CONFORMANCE_JUNIT_OUTPUT}}
         docker exec {{.CLUSTER_NAME}}-control-plane cat /tmp/conformance-results/conformance-report.yaml > {{.CONFORMANCE_REPORT_OUTPUT}}
 
-        # 6. Check Job Status for final exit code
+        # 7. Check Job Status for final exit code
         SUCCESS_VAL=$(/{{.kubectl}} get job conformance-tests -o jsonpath='{.status.succeeded}' 2>/dev/null || echo 0)
         if [ "${SUCCESS_VAL}" = "1" ]; then
           JOB_STATUS=0
@@ -207,7 +213,7 @@ tasks:
           echo "❌ Job completed with FAILURE."
         fi
 
-        # 7. Generate HTML (Only if XML exists to avoid crash)
+        # 8. Generate HTML (Only if XML exists to avoid crash)
         if [ -f "{{.CONFORMANCE_JUNIT_OUTPUT}}" ]; then
            go run ./cmd/junit-report/main.go {{.CONFORMANCE_JUNIT_OUTPUT}} {{.CONFORMANCE_JUNIT_HTML_OUTPUT}}
         else
